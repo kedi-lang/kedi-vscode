@@ -1,0 +1,89 @@
+# Marker Language Example
+# This file demonstrates various Marker DSL features
+
+@get_country(city):
+  <city> is located in [country: str].
+  = <country>
+
+Some marker string
+@get_language(country: str) -> str:
+  The primary language spoken in <country> is [language: str].
+  = <language>
+
+# Procedure using inline Python
+@translate_greeting(language: str):
+  'Hello' in <language> is [greeting: str]
+  <`print(f"Translating to {language}...")`>
+  = <greeting>
+
+# Procedure with assignment
+@analyze_city(city: str):
+  [country: str] = <get_country(<city>)>
+  [language: str] = <get_language(<country>)>
+  = City: <city>, Country: <country>, Language: <language>
+
+# Procedure with Python block
+@calculate_stats(numbers: list[int]) -> int:
+  [total: int] = ```
+  return sum(numbers)
+  ```
+  [count: int] = ```
+  return len(numbers)
+  ```
+  [average: float] = ```
+  return total / count if count > 0 else 0
+  ```
+  = Average of <`count`> numbers is <`average`>
+
+# Procedure with typed list output
+@get_neighbors(country: str):
+  Countries bordering <country> are [neighbors: list[str]]
+  = <`', '.join(neighbors)`>
+
+# Procedure with multiple outputs
+@get_city_info(city: str):
+  For <city>, determine:
+  - Population: [population: int]
+  - Area in km²: [area: float]
+  - Is capital: [is_capital: bool]
+  - Famous landmarks: [landmarks: list[str]]
+  = City <city> has <population> people in <area> km²
+
+
+
+
+@show_escapes():
+  = Use <<angle brackets>>, [[square brackets]], @@at symbol, and == equals
+
+
+
+
+# Complex nested calls
+@trip_planner(start_city: str):
+  [country] = <get_country(<start_city>)>
+  [neighbor] = <get_neighbors(<country>)>
+  Plan a trip from <start_city> to [destination] in <neighbor>.
+  [itinerary: list[str]] = ```
+  return [
+    f"Day 1: Explore {start_city}",
+    f"Day 2: Travel to {destination}",
+    f"Day 3: Return to {start_city}"
+  ]
+  ```
+  = Itinerary: <`'\n'.join(itinerary)`>
+
+# Assignment at top level
+[global_city: str] = Paris
+
+# Python block at top level 
+```
+# fdskjnbf
+import math
+radius = 6371  # Earth radius in km
+pi_approx = math.pi
+```
+
+[x] = dfkjnlkdsfv
+
+# Top-level execution with nested calls
+= <translate_greeting(<get_language(<get_country(Paris)>)>)>

@@ -1,0 +1,446 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "Marker",
+    "scopeName": "source.marker",
+    "patterns": [
+      {
+        "include": "#comments"
+      },
+      {
+        "include": "#procedure-definition"
+      },
+      {
+        "include": "#return-python-block"
+      },
+      {
+        "include": "#assignment-python-block"
+      },
+      {
+        "include": "#return-statement"
+      },
+      {
+        "include": "#assignment"
+      },
+      {
+        "include": "#python-block"
+      },
+      {
+        "include": "#template-line"
+      }
+    ],
+    "repository": {
+      "comments": {
+        "patterns": [
+          {
+            "name": "comment.line.number-sign.marker",
+            "match": "#.*$"
+          }
+        ]
+      },
+      "procedure-definition": {
+        "patterns": [
+          {
+            "match": "^\\s*(@)([A-Za-z_][A-Za-z0-9_]*)\\s*\\(([^)]*)\\)\\s*(->)?\\s*([A-Za-z_][A-Za-z0-9_\\[\\]]*)?\\s*(:)",
+            "captures": {
+              "1": { "name": "keyword.operator.marker" },
+              "2": { "name": "entity.name.function.marker" },
+              "3": { "patterns": [ { "include": "#parameters" } ] },
+              "4": { "name": "keyword.operator.arrow.marker" },
+              "5": { "name": "storage.type.marker" },
+              "6": { "name": "punctuation.section.procedure.marker" }
+            }
+          }
+        ]
+      },
+      "parameters": {
+        "patterns": [
+          {
+            "match": "([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_\\[\\]]*)",
+            "captures": {
+              "1": {
+                "name": "variable.parameter.marker"
+              },
+              "2": {
+                "name": "punctuation.separator.marker"
+              },
+              "3": {
+                "name": "storage.type.marker"
+              }
+            }
+          },
+          {
+            "match": "([A-Za-z_][A-Za-z0-9_]*)",
+            "name": "variable.parameter.marker"
+          },
+          {
+            "match": ",",
+            "name": "punctuation.separator.parameters.marker"
+          }
+        ]
+      },
+      "return-python-block": {
+        "patterns": [
+          {
+            "begin": "^\\s*(=)\\s*(```)\\s*$",
+            "end": "^\\s*(```)\\s*$",
+            "beginCaptures": {
+              "1": {
+                "name": "keyword.control.return.marker"
+              },
+              "2": {
+                "name": "punctuation.definition.code.marker"
+              }
+            },
+            "endCaptures": {
+              "1": {
+                "name": "punctuation.definition.code.marker"
+              }
+            },
+            "contentName": "source.python.embedded.block.marker",
+            "patterns": [
+              {
+                "include": "source.python"
+              }
+            ]
+          }
+        ]
+      },
+      "assignment-python-block": {
+        "patterns": [
+          {
+            "begin": "^\\s*(\\[)([A-Za-z_][A-Za-z0-9_]*)\\s*(:)?\\s*([A-Za-z_][A-Za-z0-9_\\[\\]]*)?\\s*(\\])\\s*(=)\\s*(```)\\s*$",
+            "end": "^\\s*(```)\\s*$",
+            "beginCaptures": {
+              "1": {
+                "name": "punctuation.definition.variable.begin.marker"
+              },
+              "2": {
+                "name": "variable.other.assignment.marker"
+              },
+              "3": {
+                "name": "punctuation.separator.marker"
+              },
+              "4": {
+                "name": "storage.type.marker"
+              },
+              "5": {
+                "name": "punctuation.definition.variable.end.marker"
+              },
+              "6": {
+                "name": "keyword.operator.assignment.marker"
+              },
+              "7": {
+                "name": "punctuation.definition.code.marker"
+              }
+            },
+            "endCaptures": {
+              "1": {
+                "name": "punctuation.definition.code.marker"
+              }
+            },
+            "contentName": "source.python.embedded.block.marker",
+            "patterns": [
+              {
+                "include": "source.python"
+              }
+            ]
+          }
+        ]
+      },
+      "return-statement": {
+        "patterns": [
+          {
+            "begin": "^\\s*(=)(?!=)",
+            "end": "$",
+            "beginCaptures": {
+              "1": {
+                "name": "keyword.control.return.marker"
+              }
+            },
+            "patterns": [
+              {
+                "include": "#expression-contents-no-output"
+              }
+            ]
+          }
+        ]
+      },
+      "assignment": {
+        "patterns": [
+          {
+            "begin": "^\\s*(\\[)([A-Za-z_][A-Za-z0-9_]*)\\s*(:)?\\s*([A-Za-z_][A-Za-z0-9_\\[\\]]*)?\\s*(\\])\\s*(=)(?!=)",
+            "end": "$",
+            "beginCaptures": {
+              "1": {
+                "name": "punctuation.definition.variable.marker"
+              },
+              "2": {
+                "name": "variable.other.assignment.marker"
+              },
+              "3": {
+                "name": "punctuation.separator.marker"
+              },
+              "4": {
+                "name": "storage.type.marker"
+              },
+              "5": {
+                "name": "punctuation.definition.variable.marker"
+              },
+              "6": {
+                "name": "keyword.operator.assignment.marker"
+              }
+            },
+            "patterns": [
+              {
+                "include": "#expression-contents-no-output"
+              }
+            ]
+          }
+        ]
+      },
+      "python-block": {
+        "patterns": [
+          {
+            "begin": "^\\s*(```)\\s*$",
+            "end": "^\\s*(```)\\s*$",
+            "beginCaptures": {
+              "1": {
+                "name": "punctuation.definition.code.marker"
+              }
+            },
+            "endCaptures": {
+              "1": {
+                "name": "punctuation.definition.code.marker"
+              }
+            },
+            "contentName": "source.python.embedded.block.marker",
+            "patterns": [
+              {
+                "include": "source.python"
+              }
+            ]
+          }
+        ]
+      },
+      "template-line": {
+        "patterns": [
+          {
+            "match": "^(?!\\s*[@#=\\[]|\\s*```|\\s*$)(.+)$",
+            "captures": {
+              "1": {
+                "patterns": [
+                  { "include": "#template-contents" }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "expression-contents": {
+        "patterns": [
+          { "include": "#escaped-chars" },
+          { "include": "#inline-python" },
+          { "include": "#substitution" },
+          { "include": "#output" },
+          { "include": "#strings" }
+        ]
+      },
+      "expression-contents-no-output": {
+        "patterns": [
+          { "include": "#escaped-chars" },
+          { "include": "#inline-python" },
+          { "include": "#substitution" },
+          { "include": "#strings" },
+          { "match": "[^<`\\[\\]@=,]+", "name": "string.unquoted.marker" }
+        ]
+      },
+      "template-contents": {
+        "patterns": [
+          { "include": "#escaped-chars" },
+          { "include": "#inline-python" },
+          { "include": "#substitution" },
+          { "include": "#output" },
+          { "include": "#strings" },
+          { "match": ".", "name": "string.unquoted.marker" }
+        ]
+      },
+      "inline-python": {
+        "patterns": [
+          {
+            "begin": "(<)(`)",
+            "end": "(`)(>)",
+            "beginCaptures": {
+              "1": {
+                "name": "punctuation.definition.variable.begin.marker"
+              },
+              "2": {
+                "name": "punctuation.definition.code.marker"
+              }
+            },
+            "endCaptures": {
+              "1": {
+                "name": "punctuation.definition.code.marker"
+              },
+              "2": {
+                "name": "punctuation.definition.variable.end.marker"
+              }
+            },
+            "contentName": "source.python.embedded.inline.marker",
+            "patterns": [
+              {
+                "include": "source.python"
+              }
+            ]
+          }
+        ]
+      },
+      "substitution": {
+        "patterns": [
+          {
+            "begin": "(?<!<)(<)([A-Za-z_][A-Za-z0-9_]*)\\s*(\\()",
+            "end": "(\\))(>)(?!>)",
+            "beginCaptures": {
+              "1": {
+                "name": "punctuation.definition.variable.begin.marker"
+              },
+              "2": {
+                "name": "entity.name.function.call.marker"
+              },
+              "3": {
+                "name": "punctuation.section.arguments.begin.marker"
+              }
+            },
+            "endCaptures": {
+              "1": {
+                "name": "punctuation.section.arguments.end.marker"
+              },
+              "2": {
+                "name": "punctuation.definition.variable.end.marker"
+              }
+            },
+            "patterns": [
+              {
+                "include": "#call-arguments"
+              }
+            ]
+          },
+          {
+            "match": "(?<!<)(<)([A-Za-z_][A-Za-z0-9_]*)(>)(?!>)",
+            "captures": {
+              "1": {
+                "name": "punctuation.definition.variable.begin.marker"
+              },
+              "2": {
+                "name": "variable.other.readwrite.marker"
+              },
+              "3": {
+                "name": "punctuation.definition.variable.end.marker"
+              }
+            }
+          }
+        ]
+      },
+      "call-arguments": {
+        "patterns": [
+          {
+            "begin": "`",
+            "end": "`",
+            "name": "meta.embedded.argument.python",
+            "contentName": "source.python.embedded.arg.marker",
+            "beginCaptures": {
+              "0": {
+                "name": "punctuation.definition.code.marker"
+              }
+            },
+            "endCaptures": {
+              "0": {
+                "name": "punctuation.definition.code.marker"
+              }
+            },
+            "patterns": [
+              { "include": "source.python" }
+            ]
+          },
+          { "include": "#escaped-chars" },
+          { "include": "#inline-python" },
+          { "include": "#substitution" },
+          { "include": "#strings" },
+          { "match": ",,", "name": "constant.character.escape.marker" },
+          { "match": ",", "name": "punctuation.separator.arguments.marker" },
+          { "match": "[^,>\n\r\\[\\]\\)]+", "name": "string.unquoted.argument.marker" }
+        ]
+      },
+      "output": {
+        "patterns": [
+          {
+            "match": "(?<!\\[)(\\[)([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_\\[\\]]*)(\\])(?!\\])",
+            "captures": {
+              "1": {
+                "name": "punctuation.definition.variable.begin.marker"
+              },
+              "2": {
+                "name": "variable.other.output.marker"
+              },
+              "3": {
+                "name": "punctuation.separator.marker"
+              },
+              "4": {
+                "name": "storage.type.marker"
+              },
+              "5": {
+                "name": "punctuation.definition.variable.end.marker"
+              }
+            }
+          },
+          {
+            "match": "(?<!\\[)(\\[)([A-Za-z_][A-Za-z0-9_]*)(\\])(?!\\])",
+            "captures": {
+              "1": {
+                "name": "punctuation.definition.variable.begin.marker"
+              },
+              "2": {
+                "name": "variable.other.output.marker"
+              },
+              "3": {
+                "name": "punctuation.definition.variable.end.marker"
+              }
+            }
+          }
+        ]
+      },
+      "escaped-chars": {
+        "patterns": [
+          {
+            "match": "<<|>>|\\[\\[|\\]\\]|==|@@|,,",
+            "name": "constant.character.escape.marker"
+          }
+        ]
+      },
+      "strings": {
+        "patterns": [
+          {
+            "name": "string.quoted.double.marker",
+            "begin": "\"",
+            "end": "\"",
+            "patterns": [
+              {
+                "name": "constant.character.escape.marker",
+                "match": "\\\\."
+              }
+            ]
+          },
+          {
+            "name": "string.quoted.single.marker",
+            "begin": "'",
+            "end": "'",
+            "patterns": [
+              {
+                "name": "constant.character.escape.marker",
+                "match": "\\\\."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
