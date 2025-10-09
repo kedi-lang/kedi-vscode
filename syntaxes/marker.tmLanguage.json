@@ -269,7 +269,7 @@
           "include": "#strings"
         },
         {
-          "match": "[^<`\\[\\]@=,>]+",
+          "match": "[^<`\\[\\]@=,>\\\\]+",
           "name": "string.unquoted.marker"
         }
       ]
@@ -290,7 +290,7 @@
           "include": "#strings"
         },
         {
-          "match": "[^<`\\[\\]@=,>]",
+          "match": "[^<`\\[\\]@=,>\\\\]+",
           "name": "string.unquoted.marker"
         }
       ]
@@ -445,7 +445,7 @@
     "escaped-chars": {
       "patterns": [
         {
-          "match": "<<|>>|\\[\\[|\\]\\]|==|@@|,,",
+          "match": "<<|>>|\\[\\[|\\]\\]|==|@@|,,|\\\\\\\\",
           "name": "constant.character.escape.marker"
         }
       ]

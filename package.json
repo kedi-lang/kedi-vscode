@@ -2,7 +2,7 @@
     "name": "marker-vscode",
     "displayName": "MarkerLang Syntax",
     "description": "Syntax highlighting and language support for Marker DSL",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "publisher": "dyigitpolat",
     "icon": "icon.png",
     "engines": {
@@ -15,7 +15,11 @@
       "marker",
       "dsl",
       "llm",
-      "prompting"
+      "prompting",
+      "markerlang",
+      "syntax",
+      "language",
+      "highlighting"
     ],
     "repository": {
       "type": "git",
