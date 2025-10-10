@@ -7,24 +7,36 @@
 
 Some marker string
 @get_language(country: str) -> str:
-  The primary language spoken in <country> is [language: str].
+  The primary language spoken in <country> is [language: str]. # COMMENT
   = <language>
 
-# Procedure using inline Python
-@translate_greeting(language: str):
-  'Hello' in <language> is [greeting: str]
-  <`print(f"Translating to {language}...")`>
-  = <greeting>
+~Person(a:int, b:Car, c)
 
+@translate_greeting(language: str): #COMMENT
+  'Hello' in <language> is [greeting: str] # COMMENT 
+  <`print(f"Translating to {language}...")`> # COMMENT
+  = <greeting> # COMMENT
+
+###
 # Procedure with assignment
 @analyze_city(city: str):
   [country: str] = <get_country(<city>)>
   [language: str] = <get_language(<country>)>
   = City: <city>, Country: <country>, Language: <language>
+### 
+
+# COMMENT
+@foo(): # COMMENT
+  @bar():
+    # COMMENT
+    <> # COMMENT
+    = <`'bar'`>
+    # COMMENT
+  = <`'foo'`> # COMMENT
 
 # Procedure with Python block
-@calculate_stats(numbers: list[int]) -> int:
-  [total: int] = ```
+@calculate_stats(numbers: list[int]) -> int: #COMMENT
+  [total: int] = ``` #COMMENT
   return sum(numbers)
   ```
   [count: int] = ```

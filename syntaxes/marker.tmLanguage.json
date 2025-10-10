@@ -4,7 +4,13 @@
   "scopeName": "source.marker",
   "patterns": [
     {
-      "include": "#comments"
+      "include": "#block-comments"
+    },
+    {
+      "include": "#standalone-comment"
+    },
+    {
+      "include": "#type-definition"
     },
     {
       "include": "#procedure-definition"
@@ -29,26 +35,149 @@
     }
   ],
   "repository": {
+    "block-comments": {
+      "patterns": [
+        {
+          "begin": "^\\s*(###)\\s*$",
+          "end": "^\\s*(###)\\s*$",
+          "beginCaptures": {
+            "1": {
+              "name": "comment.block.marker"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "comment.block.marker"
+            }
+          },
+          "contentName": "comment.block.marker"
+        }
+      ]
+    },
+    "standalone-comment": {
+      "patterns": [
+        {
+          "match": "^\\s*(?<!#)(#)(?!#).*",
+          "name": "comment.line.number-sign.marker",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.comment.marker"
+            }
+          }
+        }
+      ]
+    },
+    "type-definition": {
+      "patterns": [
+        {
+          "begin": "^\\s*(~)([A-Za-z_][A-Za-z0-9_]*)",
+          "end": "$",
+          "beginCaptures": {
+            "1": { "name": "keyword.operator.tilde.marker" },
+            "2": { "name": "entity.name.type.marker" }
+          },
+          "patterns": [
+            {
+              "begin": "\\(",
+              "end": "\\)",
+              "beginCaptures": {
+                "0": { "name": "punctuation.section.parameters.begin.marker" }
+              },
+              "endCaptures": {
+                "0": { "name": "punctuation.section.parameters.end.marker" }
+              },
+              "patterns": [
+                { "include": "#type-fields" },
+                { "include": "#inline-comment" }
+              ]
+            },
+            { "include": "#inline-comment" }
+          ],
+          "name": "meta.type.definition.marker"
+        }
+      ]
+    },
+    "type-fields": {
+      "patterns": [
+        {
+          "match": "([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_\\[\\]]*)",
+          "captures": {
+            "1": {
+              "name": "variable.other.field.marker"
+            },
+            "2": {
+              "name": "punctuation.separator.marker"
+            },
+            "3": {
+              "name": "storage.type.marker"
+            }
+          }
+        },
+        {
+          "match": "([A-Za-z_][A-Za-z0-9_]*)",
+          "name": "variable.other.field.marker"
+        },
+        {
+          "match": ",",
+          "name": "punctuation.separator.parameters.marker"
+        },
+        {
+          "include": "#inline-comment"
+        }
+      ]
+    },
     "comments": {
       "patterns": [
         {
+          "match": "(?<!#)(#)(?!#).*$",
           "name": "comment.line.number-sign.marker",
-          "match": "#.*$"
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.comment.marker"
+            }
+          }
         }
       ]
     },
     "procedure-definition": {
       "patterns": [
         {
-          "match": "^\\s*(@)([A-Za-z_][A-Za-z0-9_]*)\\s*\\(([^)]*)\\)\\s*(->)?\\s*([A-Za-z_][A-Za-z0-9_\\[\\]]*)?\\s*(:)",
-          "captures": {
+          "begin": "^\\s*(@)([A-Za-z_][A-Za-z0-9_]*)",
+          "end": "$",
+          "beginCaptures": {
             "1": { "name": "keyword.operator.marker" },
-            "2": { "name": "entity.name.function.marker" },
-            "3": { "patterns": [ { "include": "#parameters" } ] },
-            "4": { "name": "keyword.operator.arrow.marker" },
-            "5": { "name": "storage.type.marker" },
-            "6": { "name": "punctuation.section.procedure.marker" }
-          }
+            "2": { "name": "entity.name.function.marker" }
+          },
+          "name": "meta.procedure.definition.marker",
+          "patterns": [
+            {
+              "begin": "\\(",
+              "end": "\\)",
+              "beginCaptures": {
+                "0": { "name": "punctuation.section.parameters.begin.marker" }
+              },
+              "endCaptures": {
+                "0": { "name": "punctuation.section.parameters.end.marker" }
+              },
+              "patterns": [
+                { "include": "#parameters" }
+              ]
+            },
+            {
+              "match": "\\s*(->)\\s*([A-Za-z_][A-Za-z0-9_\\[\\]]*)?",
+              "captures": {
+                "1": { "name": "keyword.operator.arrow.marker" },
+                "2": { "name": "storage.type.marker" }
+              }
+            },
+            {
+              "match": "\\s*(:)",
+              "captures": {
+                "1": { "name": "punctuation.section.procedure.marker" }
+              }
+            },
+            { "include": "#inline-comment" }
+          ]
         }
       ]
     },
@@ -160,6 +289,9 @@
           "patterns": [
             {
               "include": "#expression-contents-no-output"
+            },
+            {
+              "include": "#inline-comment"
             }
           ]
         }
@@ -193,6 +325,9 @@
           "patterns": [
             {
               "include": "#expression-contents-no-output"
+            },
+            {
+              "include": "#inline-comment"
             }
           ]
         }
@@ -225,10 +360,11 @@
     "template-line": {
       "patterns": [
         {
-          "match": "^(?!\\s*[@#=\\[]|\\s*```|\\s*$)(.+)$",
+          "match": "^(?!\\s*[@#=]|\\s*\\[[^]]*\\]\\s*=|\\s*```|\\s*$)(.+)$",
           "captures": {
             "1": {
               "patterns": [
+                { "include": "#inline-comment" },
                 { "include": "#template-contents" }
               ]
             }
@@ -250,6 +386,9 @@
         },
         {
           "include": "#strings"
+        },
+        {
+          "include": "#inline-comment"
         }
       ]
     },
@@ -269,7 +408,10 @@
           "include": "#strings"
         },
         {
-          "match": "[^<`\\[\\]@=,>\\\\]+",
+          "include": "#inline-comment"
+        },
+        {
+          "match": "[^#<`\\[\\]@=,>\\\\]+",
           "name": "string.unquoted.marker"
         }
       ]
@@ -290,7 +432,10 @@
           "include": "#strings"
         },
         {
-          "match": "[^<`\\[\\]@=,>\\\\]+",
+          "include": "#inline-comment"
+        },
+        {
+          "match": "[^#<`\\[\\]@=,>\\\\]+",
           "name": "string.unquoted.marker"
         }
       ]
@@ -316,6 +461,27 @@
               "name": "punctuation.definition.variable.end.marker"
             }
           },
+          "contentName": "source.python.embedded.inline.marker",
+          "patterns": [
+            {
+              "include": "source.python"
+            }
+          ]
+        },
+        {
+          "begin": "(`)",
+          "end": "(`)",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.code.marker"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.code.marker"
+            }
+          },
+          "name": "meta.embedded.inline.python.marker",
           "contentName": "source.python.embedded.inline.marker",
           "patterns": [
             {
@@ -473,6 +639,19 @@
               "match": "\\\\."
             }
           ]
+        }
+      ]
+    },
+    "inline-comment": {
+      "patterns": [
+        {
+          "match": "(?<!#)(#)(?!#).*?$",
+          "name": "comment.line.number-sign.marker",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.comment.marker"
+            }
+          }
         }
       ]
     }
