@@ -31,6 +31,12 @@
       "include": "#python-block"
     },
     {
+      "include": "#test-definition"
+    },
+    {
+      "include": "#eval-definition"
+    },
+    {
       "include": "#template-line"
     }
   ],
@@ -142,11 +148,12 @@
     "procedure-definition": {
       "patterns": [
         {
-          "begin": "^\\s*(@)([A-Za-z_][A-Za-z0-9_]*)",
+          "begin": "^\\s*(@)([A-Za-z_][A-Za-z0-9_]*)\\s*(\\()",
           "end": "$",
           "beginCaptures": {
             "1": { "name": "keyword.operator.marker" },
-            "2": { "name": "entity.name.function.marker" }
+            "2": { "name": "entity.name.function.marker" },
+            "3": { "name": "punctuation.section.parameters.begin.marker" }
           },
           "name": "meta.procedure.definition.marker",
           "patterns": [
@@ -154,7 +161,7 @@
               "begin": "\\(",
               "end": "\\)",
               "beginCaptures": {
-                "0": { "name": "punctuation.section.parameters.begin.marker" }
+                "0": { "name": "punctuation.section.parameters.end.marker" }
               },
               "endCaptures": {
                 "0": { "name": "punctuation.section.parameters.end.marker" }
@@ -360,7 +367,7 @@
     "template-line": {
       "patterns": [
         {
-          "match": "^(?!\\s*[@#=]|\\s*\\[[^]]*\\]\\s*=|\\s*```|\\s*$)(.+)$",
+          "match": "^(?!\\s*[@#=]|\\s*\\[[^]]*\\]\\s*=|\\s*```|\\s*> case:|\\s*> metric:|\\s*$)(.+)$",
           "captures": {
             "1": {
               "patterns": [
@@ -652,6 +659,86 @@
               "name": "punctuation.definition.comment.marker"
             }
           }
+        }
+      ]
+    },
+    "test-definition": {
+      "patterns": [
+        {
+          "begin": "^\\s*(@test:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
+          "end": "(?=^\\s*[@~=\\[\\]```\\s*$]|$)",
+          "beginCaptures": {
+            "1": { "name": "keyword.control.test.marker" },
+            "2": { "name": "entity.name.function.marker" },
+            "3": { "name": "punctuation.separator.marker" }
+          },
+          "patterns": [
+            { "include": "#case-block" },
+            { "include": "#inline-comment" }
+          ]
+        }
+      ]
+    },
+    "eval-definition": {
+      "patterns": [
+        {
+          "begin": "^\\s*(@eval:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
+          "end": "(?=^\\s*[@~=\\[\\]```\\s*$]|$)",
+          "beginCaptures": {
+            "1": { "name": "keyword.control.eval.marker" },
+            "2": { "name": "entity.name.function.marker" },
+            "3": { "name": "punctuation.separator.marker" }
+          },
+          "patterns": [
+            { "include": "#metric-block" },
+            { "include": "#inline-comment" }
+          ]
+        }
+      ]
+    },
+    "case-block": {
+      "patterns": [
+        {
+          "begin": "^\\s*(>)\\s*(case)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*)",
+          "end": "(?=^\\s*> case:|^\\s*> metric:|^\\s*[@~=\\[\\]```\\s*$]|$)",
+          "beginCaptures": {
+            "1": { "name": "keyword.operator.marker" },
+            "2": { "name": "keyword.marker" },
+            "3": { "name": "punctuation.separator.case.marker" },
+            "4": { "name": "variable.parameter.marker" }
+          },
+          "patterns": [
+            { "include": "#expression-contents" },
+            { "include": "#python-block" },
+            { "include": "#inline-python" },
+            { "include": "#assignment" },
+            { "include": "#return-statement" },
+            { "include": "#template-line" },
+            { "include": "#inline-comment" }
+          ]
+        }
+      ]
+    },
+    "metric-block": {
+      "patterns": [
+        {
+          "begin": "^\\s*(>)\\s*(metric)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*)",
+          "end": "(?=^\\s*> case:|^\\s*> metric:|^\\s*[@~=\\[\\]```\\s*$]|$)",
+          "beginCaptures": {
+            "1": { "name": "keyword.operator.marker" },
+            "2": { "name": "keyword.marker" },
+            "3": { "name": "punctuation.separator.metric.marker" },
+            "4": { "name": "variable.parameter.marker" }
+          },
+          "patterns": [
+            { "include": "#expression-contents" },
+            { "include": "#python-block" },
+            { "include": "#inline-python" },
+            { "include": "#assignment" },
+            { "include": "#return-statement" },
+            { "include": "#template-line" },
+            { "include": "#inline-comment" }
+          ]
         }
       ]
     }

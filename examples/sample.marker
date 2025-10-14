@@ -99,3 +99,40 @@ pi_approx = math.pi
 
 # Top-level execution with nested calls
 = <translate_greeting(<get_language(<get_country(Paris)>)>)>
+
+# Test definitions
+@test: get_country:
+  > case: basic:
+    ```
+    result = get_country("France")
+    assert result == "France"
+    ```
+
+  > case: invalid:
+    ```
+    try:
+      result = get_country("InvalidCountry")
+      assert False, "Should have raised an error"
+    except:
+      pass
+    ```
+
+@eval: get_country:
+  > metric: accuracy:
+    = ```
+    # Test accuracy by checking known countries
+    test_cases = [
+      ("France", "France"),
+      ("Germany", "Germany"),
+      ("Japan", "Japan")
+    ]
+    correct = 0
+    for country, expected in test_cases:
+      try:
+        result = get_country(country)
+        if result == expected:
+          correct += 1
+      except:
+        pass
+    return (correct / len(test_cases), f"Got {correct}/{len(test_cases)} correct")
+    ```

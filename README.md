@@ -10,6 +10,8 @@ Marker is a lightweight DSL for orchestrating LLM workflows. This extension ship
 - Inline Python expressions inside templates and arguments, plus escaped delimiter tokens.
 - Multiline Python fences with dedicated scopes for embedded return/assignment blocks.
 - String literals, unquoted template segments, and inline/block comments.
+- Test definitions `@test: procedure` where `procedure` is highlighted like a function name, with case blocks `> case: name` where `>` is highlighted like `@`, `case` as a keyword, and `name` as a variable.
+- Evaluation definitions `@eval: procedure` where `procedure` is highlighted like a function name, with metric blocks `> metric: name` where `>` is highlighted like `@`, `metric` as a keyword, and `name` as a variable.
 
 ## Authoring Semantics
 - Distinguishes plain template lines from control lines so prompts, returns, and assignments render correctly.

@@ -2,7 +2,7 @@
     "name": "marker-vscode",
     "displayName": "MarkerLang Syntax",
     "description": "Syntax highlighting and language support for Marker DSL",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "publisher": "dyigitpolat",
     "icon": "icon.png",
     "engines": {
