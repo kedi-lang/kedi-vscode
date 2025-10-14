@@ -1,6 +1,6 @@
 {
     "comments": {
-      "lineComment": "#"
+      "lineComment": "#", "blockComment": ["###", "###"]
     },
     "brackets": [
       ["(", ")"],
@@ -51,10 +51,9 @@
       ["`", "`"]
     ],
     "folding": {
-      "offSide": true,
       "markers": {
-        "start": "^\\s*@[A-Za-z_][A-Za-z0-9_]*.*:$",
-        "end": "^\\s*$"
+        "start": "^\\s*(@|~)[A-Za-z_]",
+        "end": "^(?=\\s*(@|~|\\[|=))"
       }
     },
     "indentationRules": {

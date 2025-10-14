@@ -13,6 +13,12 @@
       "include": "#type-definition"
     },
     {
+      "include": "#test-definition"
+    },
+    {
+      "include": "#eval-definition"
+    },
+    {
       "include": "#procedure-definition"
     },
     {
@@ -29,12 +35,6 @@
     },
     {
       "include": "#python-block"
-    },
-    {
-      "include": "#test-definition"
-    },
-    {
-      "include": "#eval-definition"
     },
     {
       "include": "#template-line"
@@ -145,15 +145,104 @@
         }
       ]
     },
+    "test-definition": {
+      "patterns": [
+        {
+          "begin": "^\\s*(@)(test)(:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
+          "end": "(?=^\\s*[@~]|^\\s*\\[|^\\s*=(?!=)|^\\s*```\\s*$|^(?!\\s))",
+          "beginCaptures": {
+            "1": { "name": "keyword.operator.marker" },
+            "2": { "name": "storage.type.function.marker" },
+            "3": { "name": "punctuation.separator.marker" },
+            "4": { "name": "entity.name.function.marker" },
+            "5": { "name": "punctuation.separator.marker" }
+          },
+          "name": "meta.test.definition.marker",
+          "patterns": [
+            { "include": "#case-block" },
+            { "include": "#inline-comment" }
+          ]
+        }
+      ]
+    },
+    "eval-definition": {
+      "patterns": [
+        {
+          "begin": "^\\s*(@)(eval)(:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
+          "end": "(?=^\\s*[@~]|^\\s*\\[|^\\s*=(?!=)|^\\s*```\\s*$|^(?!\\s))",
+          "beginCaptures": {
+            "1": { "name": "keyword.operator.marker" },
+            "2": { "name": "storage.type.function.marker" },
+            "3": { "name": "punctuation.separator.marker" },
+            "4": { "name": "entity.name.function.marker" },
+            "5": { "name": "punctuation.separator.marker" }
+          },
+          "name": "meta.eval.definition.marker",
+          "patterns": [
+            { "include": "#metric-block" },
+            { "include": "#inline-comment" }
+          ]
+        }
+      ]
+    },
+    "case-block": {
+      "patterns": [
+        {
+          "begin": "^\\s*(>)\\s*(case)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)?",
+          "end": "(?=^\\s*>\\s*(?:case|metric)\\s*:|^\\s*[@~]|^\\s*\\[|^\\s*=(?!=)|^\\s*```\\s*$|^(?=\\S))",
+          "beginCaptures": {
+            "1": { "name": "keyword.operator.marker" },
+            "2": { "name": "storage.type.function.marker" },
+            "3": { "name": "punctuation.separator.marker" },
+            "4": { "name": "entity.name.label.marker" }
+          },
+          "name": "meta.case.block.marker",
+          "patterns": [
+            { "include": "#python-block" },
+            { "include": "#assignment-python-block" },
+            { "include": "#return-python-block" },
+            { "include": "#inline-python" },
+            { "include": "#assignment" },
+            { "include": "#return-statement" },
+            { "include": "#standalone-comment" },
+            { "include": "#template-line" }
+          ]
+        }
+      ]
+    },
+    "metric-block": {
+      "patterns": [
+        {
+          "begin": "^\\s*(>)\\s*(metric)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)?",
+          "end": "(?=^\\s*>\\s*(?:case|metric)\\s*:|^\\s*[@~]|^\\s*\\[|^\\s*=(?!=)|^\\s*```\\s*$|^(?=\\S))",
+          "beginCaptures": {
+            "1": { "name": "keyword.operator.marker" },
+            "2": { "name": "storage.type.function.marker" },
+            "3": { "name": "punctuation.separator.marker" },
+            "4": { "name": "entity.name.label.marker" }
+          },
+          "name": "meta.metric.block.marker",
+          "patterns": [
+            { "include": "#python-block" },
+            { "include": "#assignment-python-block" },
+            { "include": "#return-python-block" },
+            { "include": "#inline-python" },
+            { "include": "#assignment" },
+            { "include": "#return-statement" },
+            { "include": "#standalone-comment" },
+            { "include": "#template-line" }
+          ]
+        }
+      ]
+    },
     "procedure-definition": {
       "patterns": [
         {
-          "begin": "^\\s*(@)([A-Za-z_][A-Za-z0-9_]*)\\s*(\\()",
+          "begin": "^\\s*(@)([A-Za-z_][A-Za-z0-9_]*)",
           "end": "$",
           "beginCaptures": {
             "1": { "name": "keyword.operator.marker" },
-            "2": { "name": "entity.name.function.marker" },
-            "3": { "name": "punctuation.section.parameters.begin.marker" }
+            "2": { "name": "entity.name.function.marker" }
           },
           "name": "meta.procedure.definition.marker",
           "patterns": [
@@ -161,7 +250,7 @@
               "begin": "\\(",
               "end": "\\)",
               "beginCaptures": {
-                "0": { "name": "punctuation.section.parameters.end.marker" }
+                "0": { "name": "punctuation.section.parameters.begin.marker" }
               },
               "endCaptures": {
                 "0": { "name": "punctuation.section.parameters.end.marker" }
@@ -618,7 +707,7 @@
     "escaped-chars": {
       "patterns": [
         {
-          "match": "<<|>>|\\[\\[|\\]\\]|==|@@|,,|\\\\\\\\",
+          "match": "\\[\\[|\\]\\]|<<|>>|==|@@|,,|\\\\\\\\",
           "name": "constant.character.escape.marker"
         }
       ]
@@ -659,86 +748,6 @@
               "name": "punctuation.definition.comment.marker"
             }
           }
-        }
-      ]
-    },
-    "test-definition": {
-      "patterns": [
-        {
-          "begin": "^\\s*(@test:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
-          "end": "(?=^\\s*[@~=\\[\\]```\\s*$]|$)",
-          "beginCaptures": {
-            "1": { "name": "keyword.control.test.marker" },
-            "2": { "name": "entity.name.function.marker" },
-            "3": { "name": "punctuation.separator.marker" }
-          },
-          "patterns": [
-            { "include": "#case-block" },
-            { "include": "#inline-comment" }
-          ]
-        }
-      ]
-    },
-    "eval-definition": {
-      "patterns": [
-        {
-          "begin": "^\\s*(@eval:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
-          "end": "(?=^\\s*[@~=\\[\\]```\\s*$]|$)",
-          "beginCaptures": {
-            "1": { "name": "keyword.control.eval.marker" },
-            "2": { "name": "entity.name.function.marker" },
-            "3": { "name": "punctuation.separator.marker" }
-          },
-          "patterns": [
-            { "include": "#metric-block" },
-            { "include": "#inline-comment" }
-          ]
-        }
-      ]
-    },
-    "case-block": {
-      "patterns": [
-        {
-          "begin": "^\\s*(>)\\s*(case)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*)",
-          "end": "(?=^\\s*> case:|^\\s*> metric:|^\\s*[@~=\\[\\]```\\s*$]|$)",
-          "beginCaptures": {
-            "1": { "name": "keyword.operator.marker" },
-            "2": { "name": "keyword.marker" },
-            "3": { "name": "punctuation.separator.case.marker" },
-            "4": { "name": "variable.parameter.marker" }
-          },
-          "patterns": [
-            { "include": "#expression-contents" },
-            { "include": "#python-block" },
-            { "include": "#inline-python" },
-            { "include": "#assignment" },
-            { "include": "#return-statement" },
-            { "include": "#template-line" },
-            { "include": "#inline-comment" }
-          ]
-        }
-      ]
-    },
-    "metric-block": {
-      "patterns": [
-        {
-          "begin": "^\\s*(>)\\s*(metric)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*)",
-          "end": "(?=^\\s*> case:|^\\s*> metric:|^\\s*[@~=\\[\\]```\\s*$]|$)",
-          "beginCaptures": {
-            "1": { "name": "keyword.operator.marker" },
-            "2": { "name": "keyword.marker" },
-            "3": { "name": "punctuation.separator.metric.marker" },
-            "4": { "name": "variable.parameter.marker" }
-          },
-          "patterns": [
-            { "include": "#expression-contents" },
-            { "include": "#python-block" },
-            { "include": "#inline-python" },
-            { "include": "#assignment" },
-            { "include": "#return-statement" },
-            { "include": "#template-line" },
-            { "include": "#inline-comment" }
-          ]
         }
       ]
     }
