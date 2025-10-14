@@ -507,7 +507,7 @@
           "include": "#inline-comment"
         },
         {
-          "match": "[^#<`\\[\\]@=,>\\\\]+",
+          "match": "[^#<`\\[\\]@=,>\\\\\\s]+",
           "name": "string.unquoted.marker"
         }
       ]
@@ -531,7 +531,7 @@
           "include": "#inline-comment"
         },
         {
-          "match": "[^#<`\\[\\]@=,>\\\\]+",
+          "match": "[^#<`\\[\\]@=,>\\\\\\s]+",
           "name": "string.unquoted.marker"
         }
       ]
@@ -658,7 +658,6 @@
         { "include": "#inline-python" },
         { "include": "#substitution" },
         { "include": "#strings" },
-        { "match": ",,", "name": "constant.character.escape.marker" },
         { "match": ",", "name": "punctuation.separator.arguments.marker" },
         {
           "match": "[^,<>`\\n\\r\\[\\]\\)]+",
@@ -707,7 +706,7 @@
     "escaped-chars": {
       "patterns": [
         {
-          "match": "\\[\\[|\\]\\]|<<|>>|==|@@|,,|\\\\\\\\",
+          "match": "\\\\[<>=@,~()\\[\\]`#]|\\\\\\\\",
           "name": "constant.character.escape.marker"
         }
       ]

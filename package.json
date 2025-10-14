@@ -2,68 +2,83 @@
     "name": "marker-vscode",
     "displayName": "MarkerLang Syntax",
     "description": "Syntax highlighting and language support for Marker DSL",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "publisher": "dyigitpolat",
     "icon": "icon.png",
     "engines": {
-      "vscode": "^1.70.0"
+        "vscode": "^1.70.0"
     },
     "categories": [
-      "Programming Languages"
+        "Programming Languages"
     ],
     "keywords": [
-      "marker",
-      "dsl",
-      "llm",
-      "prompting",
-      "markerlang",
-      "syntax",
-      "language",
-      "highlighting",
-      "marker-lang"
+        "marker",
+        "dsl",
+        "llm",
+        "prompting",
+        "markerlang",
+        "syntax",
+        "language",
+        "highlighting",
+        "marker-lang"
     ],
     "repository": {
-      "type": "git",
-      "url": "https://github.com/dyigitpolat/marker-vscode"
+        "type": "git",
+        "url": "https://github.com/dyigitpolat/marker-vscode"
     },
-    "contributes": {
-      "languages": [
-        {
-          "id": "marker",
-          "aliases": [
-            "Marker",
-            "marker"
-          ],
-          "extensions": [
-            ".marker"
-          ],
-          "configuration": "./language-configuration.json",
-          "icon": {
-            "light": "./icon.png",
-            "dark": "./icon.png"
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:marker"
+  ],
+  "contributes": {
+        "languages": [
+            {
+                "id": "marker",
+                "aliases": [
+                    "Marker",
+                    "marker"
+                ],
+                "extensions": [
+                    ".marker"
+                ],
+                "configuration": "./language-configuration.json",
+                "icon": {
+                    "light": "./icon.png",
+                    "dark": "./icon.png"
+                }
+            }
+        ],
+        "configuration": {
+            "type": "object",
+            "title": "Marker Language",
+            "properties": {}
+        },
+        "grammars": [
+            {
+                "language": "marker",
+                "scopeName": "source.marker",
+                "path": "./syntaxes/marker.tmLanguage.json"
+            }
+        ],
+        "snippets": [
+          {
+            "language": "marker",
+            "path": "./snippets/marker.code-snippets"
           }
-        }
-      ],
-      "grammars": [
-        {
-          "language": "marker",
-          "scopeName": "source.marker",
-          "path": "./syntaxes/marker.tmLanguage.json"
-        }
-      ],
-      "snippets": [
-        {
-          "language": "marker",
-          "path": "./snippets/marker.code-snippets"
-        }
-      ]
+        ],
+        "commands": []
     },
     "devDependencies": {
-      "@types/vscode": "^1.70.0",
-      "@vscode/vsce": "^2.19.0"
+        "@types/node": "^18.0.0",
+        "@types/vscode": "^1.70.0",
+        "@vscode/vsce": "^2.19.0",
+        "typescript": "^5.9.3"
     },
     "scripts": {
-      "package": "vsce package",
-      "publish": "vsce publish"
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "package": "vsce package",
+        "publish": "vsce publish"
     }
-  }
+}

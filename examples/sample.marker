@@ -65,7 +65,7 @@ Some marker string
 
 
 @show_escapes():
-  = Use <<angle brackets>>, [[square brackets]], @@at symbol, and == equals
+  = Use \<angle brackets\>, \[square brackets\], \@at symbol, and \= equals
 
 
 

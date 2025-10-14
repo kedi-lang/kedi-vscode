@@ -1,0 +1,1 @@
+Always read and understand docs/MARKER_DSL.md before working with marker.tmLanguage.json. 

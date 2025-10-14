@@ -27,3 +27,21 @@ Marker is a lightweight DSL for orchestrating LLM workflows. This extension ship
 - Return-with-Python-block helper for native values.
 - List type annotation stub.
 
+## Configuration
+
+### Bracket Colorization
+
+By default, VS Code's bracket pair colorizer is **disabled for Marker files** to ensure escape sequences like `\[` and `\]` highlight correctly as escape characters rather than as brackets. The extension provides a setting to enable bracket colorization for Marker files if desired:
+
+1. Open VS Code Settings (Ctrl/Cmd + ,)
+2. Search for "Marker"
+3. Check "Marker: Bracket Colorization" to enable it
+
+Alternatively, add this to your VS Code settings.json:
+```json
+{
+  "marker.bracketColorization": true
+}
+```
+
+**How it works**: When this setting is disabled (default), the extension automatically disables VS Code's global bracket colorizer when you're viewing Marker files, ensuring escape sequences highlight correctly. When you switch to other file types, the original bracket colorizer setting is restored.

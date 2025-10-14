@@ -186,9 +186,9 @@ Arguments can be passed as:
 <process(`[1, 2, 3]`)>
 ```
 
-Use `,,` to escape commas within arguments:
+Use `\,` to escape commas within arguments:
 ```marker
-<format(alpha,, beta,, gamma)>  # Single arg: "alpha, beta, gamma"
+<format(alpha\, beta\, gamma)>  # Single arg: "alpha, beta, gamma"
 ```
 
 ## Python Integration
@@ -369,17 +369,26 @@ Nested procedures capture outer scope:
 
 ### Escaping Special Characters
 
-Double characters to escape:
-- `<<` → `<`
-- `>>` → `>`
-- `[[` → `[`
-- `]]` → `]`
-- `==` → `=`
-- `@@` → `@`
-- `,,` → `,`
+Use a backslash to escape special characters anywhere they would otherwise be interpreted by the DSL.
+
+Escapable characters:
+- `\<` → `<`
+- `\>` → `>`
+- `\[` → `]`?  // clarified below
+- `\]` → `]`
+- `\=` → `=`
+- `\@` → `@`
+- `\,` → `,`
 - `\\` → `\`
-- `##` → `#`
-- `~~` → `~`
+- `\#` → `#`
+- `\~` → `~`
+- `` \` `` → `` ` ``
+- `\(` → `(`
+- `\)` → `)`
+
+Notes:
+- Inside `<...>` substitutions and `[...]` outputs, use the same `\` escapes for literal delimiters.
+- A lone `\` before a non-escapable character is an error.
 
 ## Testing and Evaluation
 
