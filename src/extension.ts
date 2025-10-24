@@ -17,10 +17,7 @@ function updateLanguageConfiguration() {
             { open: '(', close: ')' },
             { open: '[', close: ']' },
             { open: '<', close: '>' },
-            { open: '{', close: '}' },
-            { open: '"', close: '"', notIn: ['string' as any] },
-            { open: "'", close: "'", notIn: ['string' as any] },
-            { open: '`', close: '`', notIn: ['string' as any] }
+            { open: '{', close: '}' }
         ],
         wordPattern: /[A-Za-z_][A-Za-z0-9_]*/
     };

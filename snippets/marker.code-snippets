@@ -9,39 +9,12 @@
       ],
       "description": "Create a procedure definition"
     },
-    "Python Inline": {
-      "prefix": "<`",
-      "body": [
-        "<`${1:python_expression}`>$0"
-      ],
-      "description": "Insert inline Python expression"
-    },
-    "Python Block": {
-      "prefix": "``",
-      "body": [
-        "```",
-        "${1:# Python code}",
-        "```",
-        "$0"
-      ],
-      "description": "Insert Python code block"
-    },
     "Return Statement": {
       "prefix": "=",
       "body": [
         "= ${1:expression}$0"
       ],
       "description": "Create a return statement"
-    },
-    "Return with Python Block": {
-      "prefix": "= ``",
-      "body": [
-        "= ```",
-        "return ${1:expression}",
-        "```",
-        "$0"
-      ],
-      "description": "Create return with value-returning Python block"
     },
     "List Type": {
       "prefix": "list[",
