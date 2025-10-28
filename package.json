@@ -2,7 +2,7 @@
     "name": "kedi-vscode",
     "displayName": "Kedi-Lang Syntax",
     "description": "Syntax highlighting and language support for Kedi DSL",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "publisher": "dyigitpolat",
     "icon": "icon.png",
     "engines": {
