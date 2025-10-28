@@ -1,14 +1,14 @@
-# Marker DSL Language Specification
+# Kedi DSL Language Specification
 
 ## Overview
 
-Marker is a lightweight domain-specific language (DSL) designed to orchestrate LLM interactions through a clean, Python-integrated syntax. It uses indentation-based scoping, supports typed values, and compiles to a runtime that executes prompts and threads values across computational steps.
+Kedi is a lightweight domain-specific language (DSL) designed to orchestrate LLM interactions through a clean, Python-integrated syntax. It uses indentation-based scoping, supports typed values, and compiles to a runtime that executes prompts and threads values across computational steps.
 
-## Anatomy of a Marker Template
+## Anatomy of a Kedi Template
 
-A Marker template string combines literal text with input substitutions and output placeholders:
+A Kedi template string combines literal text with input substitutions and output placeholders:
 
-```marker
+```kedi
 The capital of <country> is [capital].
 ```
 
@@ -23,14 +23,14 @@ The capital of France is [capital].
 ```
 
 After execution, `[capital]` is filled by the LLM (e.g., "Paris") and the variable `capital` becomes available in scope:
-```marker
+```kedi
 The capital of <country> is [capital].
 # Now 'capital' variable contains "Paris" and can be used:
 <capital> is a beautiful city.
 ```
 
 Multiple inputs and outputs can appear on the same line:
-```marker
+```kedi
 <person1> and <person2> live in [city] and work at [company].
 # After execution, both 'city' and 'company' are available as variables
 ```
@@ -39,7 +39,7 @@ Multiple inputs and outputs can appear on the same line:
 
 ### Program Structure
 
-A Marker program consists of:
+A Kedi program consists of:
 - **Template lines**: Free text with embedded substitutions and outputs
 - **Procedures**: Reusable named blocks of code
 - **Assignments**: Variable initialization and storage
@@ -51,13 +51,13 @@ A Marker program consists of:
 
 - Indentation defines block scope (like Python)
 - Tabs count as width 4 for comparison
-- The preprocessor inserts virtual BEGIN/END markers on indentation changes
+- The preprocessor inserts virtual BEGIN/END kedis on indentation changes
 
 ## Basic Syntax Elements
 
 ### Comments
 
-```marker
+```kedi
 # This is an inline comment
 Use ## to escape a literal # character
 
@@ -74,7 +74,7 @@ It can span multiple lines.
 
 Template lines are the basic building blocks that mix literal text with dynamic content:
 
-```marker
+```kedi
 Hello, this is plain text
 The answer is <variable> and result is <compute(5)>
 Please provide [output] for this query
@@ -84,7 +84,7 @@ Please provide [output] for this query
 
 Substitutions read values and insert them into template lines using `<...>`:
 
-```marker
+```kedi
 # Variable substitution
 The city is <city>
 
@@ -102,12 +102,15 @@ Sum is <`2 + 3`>
 
 Outputs are placeholders filled by the LLM using `[...]`:
 
-```marker
+```kedi
 # Simple output
 The capital of France is [capital].
 
 # Typed output
 Top cities: [cities: list[str]]
+
+# Typed output with inline Python type annotation
+Top cities: [cities: `list[str]`]
 
 # Multiple outputs on one line
 [first_name] [last_name] lives in [city: str]
@@ -115,16 +118,21 @@ Top cities: [cities: list[str]]
 
 Output names must be valid identifiers: `^[A-Za-z_][A-Za-z0-9_]*$`
 
+Backtick-wrapped type expressions in outputs are evaluated at runtime, giving you access to dynamic types from the prelude or computed values.
+
 ### Variable Assignment
 
 Variables can be assigned using output syntax on the left side:
 
-```marker
+```kedi
 # Simple assignment
 [prev] = <current>
 
 # Typed assignment
 [count: int] = `5`
+
+# Typed assignment with inline Python type annotation
+[count: `int`] = `5`
 
 # String assignment from expression
 [message] = Hello <name>
@@ -135,13 +143,39 @@ return sum([1, 2, 3])
 ```
 ```
 
+#### Inline Python Type Annotations
+
+You can use backtick-wrapped Python expressions in type annotations:
+
+```kedi
+# Basic types
+[x: `int`] = `42`
+[y: `str`] = `"hello"`
+[z: `float`] = `3.14`
+
+# Complex types
+[numbers: `list[int]`] = `[1, 2, 3, 4, 5]`
+[words: `list[str]`] = `["apple", "banana", "cherry"]`
+
+# Custom types from DSL definitions
+~Person(name, age: int)
+[person: `Person`] = `Person(name="Alice", age=30)`
+
+# Mix regular and backtick annotations interchangeably
+[x: int] = `10`
+[y: `int`] = `20`
+= <`str(x + y)`>  # Works the same
+```
+
+Backtick type annotations are evaluated at runtime with full access to prelude, globals, and local scope. They work identically to regular type annotations.
+
 ## Procedures
 
 ### Basic Procedures
 
 Define reusable code blocks with `@name():`:
 
-```marker
+```kedi
 @greet(name):
   Hello, <name>!
   = Welcome
@@ -152,16 +186,29 @@ Message: <greet(Alice)>
 
 ### Typed Parameters and Returns
 
-```marker
+```kedi
 @add(x: int, y: int) -> int:
   = `x + y`
 
 @process(items: list[str]) -> str:
   Total items: <`len(items)`>
   = Processed <`len(items)`> items
+
+# Inline Python type annotations work too
+@double(x: `int`) -> `int`:
+  = `x * 2`
+
+@sum_list(nums: `list[int]`) -> `int`:
+  = `sum(nums)`
+
+# Mixed usage
+@combined(x: int, y: `int`) -> `int`:
+  = `x + y`
 ```
 
-Supported types: `str`, `int`, `float`, `bool`, `list[T]`
+Supported types: `str`, `int`, `float`, `bool`, `list[T]`, plus any custom types defined in your program.
+
+You can use either regular or backtick-wrapped type annotations for parameters and return types. They work interchangeably and provide the same type safety guarantees.
 
 ### Procedure Arguments
 
@@ -169,7 +216,7 @@ Arguments can be passed as:
 1. **Native values** using single backticks: `` `expr` ``
 2. **Rendered strings** using any other format
 
-```marker
+```kedi
 @show(n: int, label: str):
   = <label>: <`str(n)`>
 
@@ -187,7 +234,7 @@ Arguments can be passed as:
 ```
 
 Use `\,` to escape commas within arguments:
-```marker
+```kedi
 <format(alpha\, beta\, gamma)>  # Single arg: "alpha, beta, gamma"
 ```
 
@@ -197,7 +244,7 @@ Use `\,` to escape commas within arguments:
 
 Use backticks within substitutions for single-line Python:
 
-```marker
+```kedi
 # In template lines
 Result: <`math.sqrt(16)`>
 Array: <`[i*2 for i in range(5)]`>
@@ -209,10 +256,10 @@ Double: <`x * 2`>
 
 ### Multiline Python Blocks
 
-**CRITICAL INDENTATION RULE**: In multiline Python blocks, both the triple backtick fences AND the Python code inside them must be indented to match the surrounding Marker context. The fences must be alone on their lines.
+**CRITICAL INDENTATION RULE**: In multiline Python blocks, both the triple backtick fences AND the Python code inside them must be indented to match the surrounding Kedi context. The fences must be alone on their lines.
 
 **Correct** - fences and code align with procedure body:
-````marker
+````kedi
 @foo():
   [x] = 5
   ```
@@ -224,7 +271,7 @@ Double: <`x * 2`>
 ````
 
 **Incorrect** - fences not indented with procedure:
-````marker
+````kedi
 @foo():
   [x] = 5
 ```
@@ -235,7 +282,7 @@ result = math.pi * x  # WRONG: fences not indented
 ````
 
 **Incorrect** - code not matching fence indentation:
-````marker
+````kedi
 @foo():
   ```
     print("wrong")  # WRONG: over-indented relative to fence
@@ -244,13 +291,13 @@ result = math.pi * x  # WRONG: fences not indented
 
 Rules:
 - Opening/closing fences must be alone on their lines (no inline `` ```python code``` ``)
-- Code must match the surrounding Marker indentation level
+- Code must match the surrounding Kedi indentation level
 - Variables in scope are injected and changes reflect back
 - The code is dedented relative to its indentation level before execution
 
 ### Value-Returning Python Blocks
 
-````marker
+````kedi
 # Assignment with return (note aligned indentation)
 @compute():
   [area: float] = ```
@@ -271,7 +318,7 @@ Rules:
 
 Single backtick lines execute for side effects only:
 
-```marker
+```kedi
 @process():
   [x] = start
   `x = x + "-modified"`
@@ -283,7 +330,7 @@ Single backtick lines execute for side effects only:
 
 If the first content is a Python block, it becomes the prelude:
 
-````marker
+````kedi
 ```
 import numpy as np
 import matplotlib.pyplot as plt
@@ -300,7 +347,7 @@ def helper(x):
 
 Lines starting with `=` return values:
 
-```marker
+```kedi
 @get_value():
   [result] = computed
   = <result>
@@ -323,7 +370,7 @@ Whitespace is trimmed only at line ends, internal spaces preserved.
 
 Define Pydantic-compatible models with `~TypeName`:
 
-````marker
+````kedi
 ~Person(name, age: int, email)
 
 @create_person() -> Person:
@@ -333,9 +380,14 @@ Define Pydantic-compatible models with `~TypeName`:
 [employee: Person] = ```
 return Person(name="Bob", age=25, email="bob@example.com")
 ```
+
+# Use inline Python type annotations with custom types
+~Team(name, scores: `list[int]`, members: `dict[str, int]`)
+
+[team: `Team`] = `Team(name="Eagles", scores=[10, 20, 30], members={"Alice": 10, "Bob": 20})`
 ````
 
-Fields without type annotations default to `str`.
+Fields without type annotations default to `str`. You can use backtick-wrapped type expressions in field definitions, parameters, returns, and variable assignments. The expressions are evaluated at runtime with access to prelude, globals, and local scope.
 
 ## Advanced Features
 
@@ -343,7 +395,7 @@ Fields without type annotations default to `str`.
 
 Use backslash for line continuation:
 
-````marker
+````kedi
 = This is a \
   long string that \
   continues across lines
@@ -357,7 +409,7 @@ Use `\\` for literal backslash.
 
 Nested procedures capture outer scope:
 
-```marker
+```kedi
 @outer(x):
   [y] = <x>-suffix
   
@@ -385,16 +437,20 @@ Escapable characters:
 - `` \` `` → `` ` ``
 - `\(` → `(`
 - `\)` → `)`
+- `\t` → tab character
+- `\n` → newline character
+- `\s` → space character
 
 Notes:
 - Inside `<...>` substitutions and `[...]` outputs, use the same `\` escapes for literal delimiters.
 - A lone `\` before a non-escapable character is an error.
+- **Whitespace preservation**: Regular whitespace (spaces) at the beginning and end of template strings are trimmed, but escaped whitespace characters (`\t`, `\n`, and `\s`) are preserved even at the boundaries. For example, `= \tTab at start\n` will preserve the leading tab and trailing newline.
 
 ## Testing and Evaluation
 
 ### Test Blocks
 
-````marker
+````kedi
 @get_cities(country: str) -> list[str]:
   Cities in <country> are [cities: list[str]]
   = `cities`
@@ -413,7 +469,7 @@ Notes:
 
 ### Evaluation Metrics
 
-````marker
+````kedi
 @eval: get_cities:
   > metric: city_count:
     = ```
@@ -427,7 +483,7 @@ Notes:
 
 Define procedure signatures with a specification line starting with `>`:
 
-```marker
+```kedi
 @summarize(texts: list[str]) -> str:
   > Takes a list of text documents and produces a concise summary that preserves key information while reducing length by 80%
 ```
@@ -435,11 +491,11 @@ Define procedure signatures with a specification line starting with `>`:
 The system will:
 1. Generate test cases based on the specification
 2. Implement the procedure iteratively until tests pass
-3. Cache the implementation in `source.cache.marker`
+3. Cache the implementation in `source.cache.kedi`
 
 ## Complete Example with Explanations
 
-````marker
+````kedi
 # Prelude block - runs once at startup, imports available everywhere
 ```
 import random

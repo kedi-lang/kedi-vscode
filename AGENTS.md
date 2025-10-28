@@ -1,1 +1,1 @@
-Always read and understand docs/MARKER_DSL.md before working with marker.tmLanguage.json. 
+Always read and understand docs/KEDI_DSL.md before working with kedi.tmLanguage.json. 

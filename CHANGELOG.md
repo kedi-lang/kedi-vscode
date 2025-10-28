@@ -1,12 +1,12 @@
 # Change Log
 
-All notable changes to the "marker-language" extension will be documented in this file.
+All notable changes to the "kedi-language" extension will be documented in this file.
 
 ## [1.0.0] - 2025-01-XX
 
 ### Added
 - Initial release
-- Syntax highlighting for all Marker DSL constructs
+- Syntax highlighting for all Kedi DSL constructs
 - Support for procedure definitions with type annotations
 - Template line highlighting with substitutions and outputs
 - Inline Python expression highlighting
@@ -27,7 +27,7 @@ All notable changes to the "marker-language" extension will be documented in thi
 - Example files
 
 ### Features
-- `.marker` file extension recognition
+- `.kedi` file extension recognition
 - Auto-completion for common patterns
 - Bracket pair colorization support
 - Escaped character recognition (`<<`, `>>`, `[[`, `]]`, `==`, `@@`, `,,`)

@@ -1,6 +1,6 @@
-# The Marker Programming Language Support
+# The Kedi Programming Language Support
 
-Marker is a lightweight DSL for orchestrating LLM workflows. This extension ships syntax awareness and authoring helpers for the language.
+Kedi is a lightweight DSL for orchestrating LLM workflows. This extension ships syntax awareness and authoring helpers for the language.
 
 ## Syntax Highlighting
 - Procedures with typed parameters, optional return annotations, and colon terminators.
@@ -31,17 +31,17 @@ Marker is a lightweight DSL for orchestrating LLM workflows. This extension ship
 
 ### Bracket Colorization
 
-By default, VS Code's bracket pair colorizer is **disabled for Marker files** to ensure escape sequences like `\[` and `\]` highlight correctly as escape characters rather than as brackets. The extension provides a setting to enable bracket colorization for Marker files if desired:
+By default, VS Code's bracket pair colorizer is **disabled for Kedi files** to ensure escape sequences like `\[` and `\]` highlight correctly as escape characters rather than as brackets. The extension provides a setting to enable bracket colorization for Kedi files if desired:
 
 1. Open VS Code Settings (Ctrl/Cmd + ,)
-2. Search for "Marker"
-3. Check "Marker: Bracket Colorization" to enable it
+2. Search for "Kedi"
+3. Check "Kedi: Bracket Colorization" to enable it
 
 Alternatively, add this to your VS Code settings.json:
 ```json
 {
-  "marker.bracketColorization": true
+  "kedi.bracketColorization": true
 }
 ```
 
-**How it works**: When this setting is disabled (default), the extension automatically disables VS Code's global bracket colorizer when you're viewing Marker files, ensuring escape sequences highlight correctly. When you switch to other file types, the original bracket colorizer setting is restored.
+**How it works**: When this setting is disabled (default), the extension automatically disables VS Code's global bracket colorizer when you're viewing Kedi files, ensuring escape sequences highlight correctly. When you switch to other file types, the original bracket colorizer setting is restored.

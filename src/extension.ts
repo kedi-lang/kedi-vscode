@@ -5,7 +5,7 @@ export function activate(context: vscode.ExtensionContext) {
     updateLanguageConfiguration();
 }
 
-// No global editor setting changes; control colorization by overriding marker brackets
+// No global editor setting changes; control colorization by overriding kedi brackets
 
 function updateLanguageConfiguration() {
     const languageConfig: vscode.LanguageConfiguration = {
@@ -22,11 +22,11 @@ function updateLanguageConfiguration() {
         wordPattern: /[A-Za-z_][A-Za-z0-9_]*/
     };
 
-    // Disable bracket colorization for Marker by not declaring bracket pairs
+    // Disable bracket colorization for Kedi by not declaring bracket pairs
     (languageConfig as any).brackets = [];
 
-    // Register the language configuration for Marker files
-    vscode.languages.setLanguageConfiguration('marker', languageConfig);
+    // Register the language configuration for Kedi files
+    vscode.languages.setLanguageConfiguration('kedi', languageConfig);
 }
 
 export function deactivate() {}

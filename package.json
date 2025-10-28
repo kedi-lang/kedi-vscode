@@ -1,8 +1,8 @@
 {
-    "name": "marker-vscode",
-    "displayName": "MarkerLang Syntax",
-    "description": "Syntax highlighting and language support for Marker DSL",
-    "version": "1.0.6",
+    "name": "kedi-vscode",
+    "displayName": "Kedi-Lang Syntax",
+    "description": "Syntax highlighting and language support for Kedi DSL",
+    "version": "1.0.7",
     "publisher": "dyigitpolat",
     "icon": "icon.png",
     "engines": {
@@ -12,34 +12,35 @@
         "Programming Languages"
     ],
     "keywords": [
-        "marker",
+        "kedi",
         "dsl",
         "llm",
         "prompting",
-        "markerlang",
+        "kedilang",
         "syntax",
         "language",
         "highlighting",
-        "marker-lang"
+        "kedi-lang",
+        "kedi-language"
     ],
     "repository": {
         "type": "git",
-        "url": "https://github.com/dyigitpolat/marker-vscode"
+        "url": "https://github.com/dyigitpolat/kedi-vscode"
     },
   "main": "./out/extension.js",
   "activationEvents": [
-    "onLanguage:marker"
+    "onLanguage:kedi"
   ],
   "contributes": {
         "languages": [
             {
-                "id": "marker",
+                "id": "kedi",
                 "aliases": [
-                    "Marker",
-                    "marker"
+                    "Kedi",
+                    "kedi"
                 ],
                 "extensions": [
-                    ".marker"
+                    ".kedi"
                 ],
                 "configuration": "./language-configuration.json",
                 "icon": {
@@ -50,20 +51,20 @@
         ],
         "configuration": {
             "type": "object",
-            "title": "Marker Language",
+            "title": "Kedi Language",
             "properties": {}
         },
         "grammars": [
             {
-                "language": "marker",
-                "scopeName": "source.marker",
-                "path": "./syntaxes/marker.tmLanguage.json"
+                "language": "kedi",
+                "scopeName": "source.kedi",
+                "path": "./syntaxes/kedi.tmLanguage.json"
             }
         ],
         "snippets": [
           {
-            "language": "marker",
-            "path": "./snippets/marker.code-snippets"
+            "language": "kedi",
+            "path": "./snippets/kedi.code-snippets"
           }
         ],
         "commands": []

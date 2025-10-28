@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "name": "Marker",
-  "scopeName": "source.marker",
+  "name": "Kedi",
+  "scopeName": "source.kedi",
   "patterns": [
     {
       "include": "#block-comments"
@@ -48,15 +48,15 @@
           "end": "^\\s*(###)\\s*$",
           "beginCaptures": {
             "1": {
-              "name": "comment.block.marker"
+              "name": "comment.block.kedi"
             }
           },
           "endCaptures": {
             "1": {
-              "name": "comment.block.marker"
+              "name": "comment.block.kedi"
             }
           },
-          "contentName": "comment.block.marker"
+          "contentName": "comment.block.kedi"
         }
       ]
     },
@@ -64,10 +64,10 @@
       "patterns": [
         {
           "match": "^\\s*(?<!#)(#)(?!#).*",
-          "name": "comment.line.number-sign.marker",
+          "name": "comment.line.number-sign.kedi",
           "captures": {
             "1": {
-              "name": "punctuation.definition.comment.marker"
+              "name": "punctuation.definition.comment.kedi"
             }
           }
         }
@@ -79,18 +79,18 @@
           "begin": "^\\s*(~)([A-Za-z_][A-Za-z0-9_]*)",
           "end": "$",
           "beginCaptures": {
-            "1": { "name": "keyword.operator.tilde.marker" },
-            "2": { "name": "entity.name.type.marker" }
+            "1": { "name": "keyword.operator.tilde.kedi" },
+            "2": { "name": "entity.name.type.kedi" }
           },
           "patterns": [
             {
               "begin": "\\(",
               "end": "\\)",
               "beginCaptures": {
-                "0": { "name": "punctuation.section.parameters.begin.marker" }
+                "0": { "name": "punctuation.section.parameters.begin.kedi" }
               },
               "endCaptures": {
-                "0": { "name": "punctuation.section.parameters.end.marker" }
+                "0": { "name": "punctuation.section.parameters.end.kedi" }
               },
               "patterns": [
                 { "include": "#type-fields" },
@@ -99,33 +99,59 @@
             },
             { "include": "#inline-comment" }
           ],
-          "name": "meta.type.definition.marker"
+          "name": "meta.type.definition.kedi"
         }
       ]
     },
     "type-fields": {
       "patterns": [
         {
+          "begin": "([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*(`)(?![^`]*``)",
+          "end": "(`)",
+          "beginCaptures": {
+            "1": {
+              "name": "variable.other.field.kedi"
+            },
+            "2": {
+              "name": "punctuation.separator.kedi"
+            },
+            "3": {
+              "name": "punctuation.definition.code.kedi"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.code.kedi"
+            }
+          },
+          "contentName": "storage.type.kedi",
+          "patterns": [
+            {
+              "include": "source.python"
+            }
+          ]
+        },
+        {
           "match": "([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_\\[\\]]*)",
           "captures": {
             "1": {
-              "name": "variable.other.field.marker"
+              "name": "variable.other.field.kedi"
             },
             "2": {
-              "name": "punctuation.separator.marker"
+              "name": "punctuation.separator.kedi"
             },
             "3": {
-              "name": "storage.type.marker"
+              "name": "storage.type.kedi"
             }
           }
         },
         {
           "match": "([A-Za-z_][A-Za-z0-9_]*)",
-          "name": "variable.other.field.marker"
+          "name": "variable.other.field.kedi"
         },
         {
           "match": ",",
-          "name": "punctuation.separator.parameters.marker"
+          "name": "punctuation.separator.parameters.kedi"
         },
         {
           "include": "#inline-comment"
@@ -136,10 +162,10 @@
       "patterns": [
         {
           "match": "(?<!#)(#)(?!#).*$",
-          "name": "comment.line.number-sign.marker",
+          "name": "comment.line.number-sign.kedi",
           "captures": {
             "1": {
-              "name": "punctuation.definition.comment.marker"
+              "name": "punctuation.definition.comment.kedi"
             }
           }
         }
@@ -151,13 +177,13 @@
           "begin": "^\\s*(@)(test)(:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
           "end": "(?=^\\s*[@~]|^\\s*\\[|^\\s*=(?!=)|^\\s*```\\s*$|^(?!\\s))",
           "beginCaptures": {
-            "1": { "name": "keyword.operator.marker" },
-            "2": { "name": "storage.type.function.marker" },
-            "3": { "name": "punctuation.separator.marker" },
-            "4": { "name": "entity.name.function.marker" },
-            "5": { "name": "punctuation.separator.marker" }
+            "1": { "name": "keyword.operator.kedi" },
+            "2": { "name": "storage.type.function.kedi" },
+            "3": { "name": "punctuation.separator.kedi" },
+            "4": { "name": "entity.name.function.kedi" },
+            "5": { "name": "punctuation.separator.kedi" }
           },
-          "name": "meta.test.definition.marker",
+          "name": "meta.test.definition.kedi",
           "patterns": [
             { "include": "#case-block" },
             { "include": "#inline-comment" }
@@ -171,13 +197,13 @@
           "begin": "^\\s*(@)(eval)(:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
           "end": "(?=^\\s*[@~]|^\\s*\\[|^\\s*=(?!=)|^\\s*```\\s*$|^(?!\\s))",
           "beginCaptures": {
-            "1": { "name": "keyword.operator.marker" },
-            "2": { "name": "storage.type.function.marker" },
-            "3": { "name": "punctuation.separator.marker" },
-            "4": { "name": "entity.name.function.marker" },
-            "5": { "name": "punctuation.separator.marker" }
+            "1": { "name": "keyword.operator.kedi" },
+            "2": { "name": "storage.type.function.kedi" },
+            "3": { "name": "punctuation.separator.kedi" },
+            "4": { "name": "entity.name.function.kedi" },
+            "5": { "name": "punctuation.separator.kedi" }
           },
-          "name": "meta.eval.definition.marker",
+          "name": "meta.eval.definition.kedi",
           "patterns": [
             { "include": "#metric-block" },
             { "include": "#inline-comment" }
@@ -191,12 +217,12 @@
           "begin": "^\\s*(>)\\s*(case)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)?",
           "end": "(?=^\\s*>\\s*(?:case|metric)\\s*:|^\\s*[@~]|^\\s*\\[|^\\s*=(?!=)|^\\s*```\\s*$|^(?=\\S))",
           "beginCaptures": {
-            "1": { "name": "keyword.operator.marker" },
-            "2": { "name": "storage.type.function.marker" },
-            "3": { "name": "punctuation.separator.marker" },
-            "4": { "name": "entity.name.label.marker" }
+            "1": { "name": "keyword.operator.kedi" },
+            "2": { "name": "storage.type.function.kedi" },
+            "3": { "name": "punctuation.separator.kedi" },
+            "4": { "name": "entity.name.label.kedi" }
           },
-          "name": "meta.case.block.marker",
+          "name": "meta.case.block.kedi",
           "patterns": [
             { "include": "#python-block" },
             { "include": "#assignment-python-block" },
@@ -216,12 +242,12 @@
           "begin": "^\\s*(>)\\s*(metric)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)?",
           "end": "(?=^\\s*>\\s*(?:case|metric)\\s*:|^\\s*[@~]|^\\s*\\[|^\\s*=(?!=)|^\\s*```\\s*$|^(?=\\S))",
           "beginCaptures": {
-            "1": { "name": "keyword.operator.marker" },
-            "2": { "name": "storage.type.function.marker" },
-            "3": { "name": "punctuation.separator.marker" },
-            "4": { "name": "entity.name.label.marker" }
+            "1": { "name": "keyword.operator.kedi" },
+            "2": { "name": "storage.type.function.kedi" },
+            "3": { "name": "punctuation.separator.kedi" },
+            "4": { "name": "entity.name.label.kedi" }
           },
-          "name": "meta.metric.block.marker",
+          "name": "meta.metric.block.kedi",
           "patterns": [
             { "include": "#python-block" },
             { "include": "#assignment-python-block" },
@@ -241,35 +267,52 @@
           "begin": "^\\s*(@)([A-Za-z_][A-Za-z0-9_]*)",
           "end": "$",
           "beginCaptures": {
-            "1": { "name": "keyword.operator.marker" },
-            "2": { "name": "entity.name.function.marker" }
+            "1": { "name": "keyword.operator.kedi" },
+            "2": { "name": "entity.name.function.kedi" }
           },
-          "name": "meta.procedure.definition.marker",
+          "name": "meta.procedure.definition.kedi",
           "patterns": [
             {
               "begin": "\\(",
               "end": "\\)",
               "beginCaptures": {
-                "0": { "name": "punctuation.section.parameters.begin.marker" }
+                "0": { "name": "punctuation.section.parameters.begin.kedi" }
               },
               "endCaptures": {
-                "0": { "name": "punctuation.section.parameters.end.marker" }
+                "0": { "name": "punctuation.section.parameters.end.kedi" }
               },
               "patterns": [
                 { "include": "#parameters" }
               ]
             },
             {
+              "begin": "\\s*(->)\\s*(`)(?![^`]*``)",
+              "end": "(`)",
+              "beginCaptures": {
+                "1": { "name": "keyword.operator.arrow.kedi" },
+                "2": { "name": "punctuation.definition.code.kedi" }
+              },
+              "endCaptures": {
+                "1": { "name": "punctuation.definition.code.kedi" }
+              },
+              "contentName": "storage.type.kedi",
+              "patterns": [
+                {
+                  "include": "source.python"
+                }
+              ]
+            },
+            {
               "match": "\\s*(->)\\s*([A-Za-z_][A-Za-z0-9_\\[\\]]*)?",
               "captures": {
-                "1": { "name": "keyword.operator.arrow.marker" },
-                "2": { "name": "storage.type.marker" }
+                "1": { "name": "keyword.operator.arrow.kedi" },
+                "2": { "name": "storage.type.kedi" }
               }
             },
             {
               "match": "\\s*(:)",
               "captures": {
-                "1": { "name": "punctuation.section.procedure.marker" }
+                "1": { "name": "punctuation.section.procedure.kedi" }
               }
             },
             { "include": "#inline-comment" }
@@ -280,26 +323,52 @@
     "parameters": {
       "patterns": [
         {
+          "begin": "([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*(`)(?![^`]*``)",
+          "end": "(`)",
+          "beginCaptures": {
+            "1": {
+              "name": "variable.parameter.kedi"
+            },
+            "2": {
+              "name": "punctuation.separator.kedi"
+            },
+            "3": {
+              "name": "punctuation.definition.code.kedi"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.code.kedi"
+            }
+          },
+          "contentName": "storage.type.kedi",
+          "patterns": [
+            {
+              "include": "source.python"
+            }
+          ]
+        },
+        {
           "match": "([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_\\[\\]]*)",
           "captures": {
             "1": {
-              "name": "variable.parameter.marker"
+              "name": "variable.parameter.kedi"
             },
             "2": {
-              "name": "punctuation.separator.marker"
+              "name": "punctuation.separator.kedi"
             },
             "3": {
-              "name": "storage.type.marker"
+              "name": "storage.type.kedi"
             }
           }
         },
         {
           "match": "([A-Za-z_][A-Za-z0-9_]*)",
-          "name": "variable.parameter.marker"
+          "name": "variable.parameter.kedi"
         },
         {
           "match": ",",
-          "name": "punctuation.separator.parameters.marker"
+          "name": "punctuation.separator.parameters.kedi"
         }
       ]
     },
@@ -310,18 +379,18 @@
           "end": "^\\s*(```)\\s*$",
           "beginCaptures": {
             "1": {
-              "name": "keyword.control.return.marker"
+              "name": "keyword.control.return.kedi"
             },
             "2": {
-              "name": "punctuation.definition.code.marker"
+              "name": "punctuation.definition.code.kedi"
             }
           },
           "endCaptures": {
             "1": {
-              "name": "punctuation.definition.code.marker"
+              "name": "punctuation.definition.code.kedi"
             }
           },
-          "contentName": "source.python.embedded.block.marker",
+          "contentName": "source.python.embedded.block.kedi",
           "patterns": [
             {
               "include": "source.python"
@@ -333,37 +402,77 @@
     "assignment-python-block": {
       "patterns": [
         {
+          "begin": "^\\s*(\\[)([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*(`)(?=[^`]*```)",
+          "end": "^\\s*(```)\\s*$",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.variable.begin.kedi"
+            },
+            "2": {
+              "name": "variable.other.assignment.kedi"
+            },
+            "3": {
+              "name": "punctuation.separator.kedi"
+            },
+            "4": {
+              "name": "punctuation.definition.code.kedi"
+            }
+          },
+          "patterns": [
+            {
+              "begin": "^(```)\\s*$",
+              "end": "^\\s*(```)\\s*$",
+              "beginCaptures": {
+                "1": {
+                  "name": "punctuation.definition.code.kedi"
+                }
+              },
+              "endCaptures": {
+                "1": {
+                  "name": "punctuation.definition.code.kedi"
+                }
+              },
+              "contentName": "source.python.embedded.block.kedi",
+              "patterns": [
+                {
+                  "include": "source.python"
+                }
+              ]
+            }
+          ]
+        },
+        {
           "begin": "^\\s*(\\[)([A-Za-z_][A-Za-z0-9_]*)\\s*(:)?\\s*([A-Za-z_][A-Za-z0-9_\\[\\]]*)?\\s*(\\])\\s*(=)\\s*(```)\\s*$",
           "end": "^\\s*(```)\\s*$",
           "beginCaptures": {
             "1": {
-              "name": "punctuation.definition.variable.begin.marker"
+              "name": "punctuation.definition.variable.begin.kedi"
             },
             "2": {
-              "name": "variable.other.assignment.marker"
+              "name": "variable.other.assignment.kedi"
             },
             "3": {
-              "name": "punctuation.separator.marker"
+              "name": "punctuation.separator.kedi"
             },
             "4": {
-              "name": "storage.type.marker"
+              "name": "storage.type.kedi"
             },
             "5": {
-              "name": "punctuation.definition.variable.end.marker"
+              "name": "punctuation.definition.variable.end.kedi"
             },
             "6": {
-              "name": "keyword.operator.assignment.marker"
+              "name": "keyword.operator.assignment.kedi"
             },
             "7": {
-              "name": "punctuation.definition.code.marker"
+              "name": "punctuation.definition.code.kedi"
             }
           },
           "endCaptures": {
             "1": {
-              "name": "punctuation.definition.code.marker"
+              "name": "punctuation.definition.code.kedi"
             }
           },
-          "contentName": "source.python.embedded.block.marker",
+          "contentName": "source.python.embedded.block.kedi",
           "patterns": [
             {
               "include": "source.python"
@@ -379,7 +488,7 @@
           "end": "$",
           "beginCaptures": {
             "1": {
-              "name": "keyword.control.return.marker"
+              "name": "keyword.control.return.kedi"
             }
           },
           "patterns": [
@@ -396,26 +505,61 @@
     "assignment": {
       "patterns": [
         {
+          "begin": "^\\s*(\\[)([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*(`)(?![^`]*``)",
+          "end": "(`)\\s*(\\])\\s*(=)(?!=)",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.variable.kedi"
+            },
+            "2": {
+              "name": "variable.other.assignment.kedi"
+            },
+            "3": {
+              "name": "punctuation.separator.kedi"
+            },
+            "4": {
+              "name": "punctuation.definition.code.kedi"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.code.kedi"
+            },
+            "2": {
+              "name": "punctuation.definition.variable.kedi"
+            },
+            "3": {
+              "name": "keyword.operator.assignment.kedi"
+            }
+          },
+          "contentName": "storage.type.kedi",
+          "patterns": [
+            {
+              "include": "source.python"
+            }
+          ]
+        },
+        {
           "begin": "^\\s*(\\[)([A-Za-z_][A-Za-z0-9_]*)\\s*(:)?\\s*([A-Za-z_][A-Za-z0-9_\\[\\]]*)?\\s*(\\])\\s*(=)(?!=)",
           "end": "$",
           "beginCaptures": {
             "1": {
-              "name": "punctuation.definition.variable.marker"
+              "name": "punctuation.definition.variable.kedi"
             },
             "2": {
-              "name": "variable.other.assignment.marker"
+              "name": "variable.other.assignment.kedi"
             },
             "3": {
-              "name": "punctuation.separator.marker"
+              "name": "punctuation.separator.kedi"
             },
             "4": {
-              "name": "storage.type.marker"
+              "name": "storage.type.kedi"
             },
             "5": {
-              "name": "punctuation.definition.variable.marker"
+              "name": "punctuation.definition.variable.kedi"
             },
             "6": {
-              "name": "keyword.operator.assignment.marker"
+              "name": "keyword.operator.assignment.kedi"
             }
           },
           "patterns": [
@@ -436,15 +580,15 @@
           "end": "^\\s*(```)\\s*$",
           "beginCaptures": {
             "1": {
-              "name": "punctuation.definition.code.marker"
+              "name": "punctuation.definition.code.kedi"
             }
           },
           "endCaptures": {
             "1": {
-              "name": "punctuation.definition.code.marker"
+              "name": "punctuation.definition.code.kedi"
             }
           },
-          "contentName": "source.python.embedded.block.marker",
+          "contentName": "source.python.embedded.block.kedi",
           "patterns": [
             {
               "include": "source.python"
@@ -508,7 +652,7 @@
         },
         {
           "match": "[^#<`\\[\\]@=,>\\\\\\s]+",
-          "name": "string.unquoted.marker"
+          "name": "string.unquoted.kedi"
         }
       ]
     },
@@ -532,7 +676,7 @@
         },
         {
           "match": "[^#<`\\[\\]@=,>\\\\\\s]+",
-          "name": "string.unquoted.marker"
+          "name": "string.unquoted.kedi"
         }
       ]
     },
@@ -543,21 +687,21 @@
           "end": "(`)(>)",
           "beginCaptures": {
             "1": {
-              "name": "punctuation.definition.variable.begin.marker"
+              "name": "punctuation.definition.variable.begin.kedi"
             },
             "2": {
-              "name": "punctuation.definition.code.marker"
+              "name": "punctuation.definition.code.kedi"
             }
           },
           "endCaptures": {
             "1": {
-              "name": "punctuation.definition.code.marker"
+              "name": "punctuation.definition.code.kedi"
             },
             "2": {
-              "name": "punctuation.definition.variable.end.marker"
+              "name": "punctuation.definition.variable.end.kedi"
             }
           },
-          "contentName": "source.python.embedded.inline.marker",
+          "contentName": "source.python.embedded.inline.kedi",
           "patterns": [
             {
               "include": "source.python"
@@ -569,16 +713,16 @@
           "end": "(`)",
           "beginCaptures": {
             "1": {
-              "name": "punctuation.definition.code.marker"
+              "name": "punctuation.definition.code.kedi"
             }
           },
           "endCaptures": {
             "1": {
-              "name": "punctuation.definition.code.marker"
+              "name": "punctuation.definition.code.kedi"
             }
           },
-          "name": "meta.embedded.inline.python.marker",
-          "contentName": "source.python.embedded.inline.marker",
+          "name": "meta.embedded.inline.python.kedi",
+          "contentName": "source.python.embedded.inline.kedi",
           "patterns": [
             {
               "include": "source.python"
@@ -594,21 +738,21 @@
           "end": "(\\))(>)(?!>)",
           "beginCaptures": {
             "1": {
-              "name": "punctuation.definition.variable.begin.marker"
+              "name": "punctuation.definition.variable.begin.kedi"
             },
             "2": {
-              "name": "entity.name.function.call.marker"
+              "name": "entity.name.function.call.kedi"
             },
             "3": {
-              "name": "punctuation.section.arguments.begin.marker"
+              "name": "punctuation.section.arguments.begin.kedi"
             }
           },
           "endCaptures": {
             "1": {
-              "name": "punctuation.section.arguments.end.marker"
+              "name": "punctuation.section.arguments.end.kedi"
             },
             "2": {
-              "name": "punctuation.definition.variable.end.marker"
+              "name": "punctuation.definition.variable.end.kedi"
             }
           },
           "patterns": [
@@ -621,13 +765,13 @@
           "match": "(<)(?!<)([A-Za-z_][A-Za-z0-9_]*)(>)(?!>)",
           "captures": {
             "1": {
-              "name": "punctuation.definition.variable.begin.marker"
+              "name": "punctuation.definition.variable.begin.kedi"
             },
             "2": {
-              "name": "variable.other.readwrite.marker"
+              "name": "variable.other.readwrite.kedi"
             },
             "3": {
-              "name": "punctuation.definition.variable.end.marker"
+              "name": "punctuation.definition.variable.end.kedi"
             }
           }
         }
@@ -639,15 +783,15 @@
           "begin": "`",
           "end": "`",
           "name": "meta.embedded.argument.python",
-          "contentName": "source.python.embedded.arg.marker",
+          "contentName": "source.python.embedded.arg.kedi",
           "beginCaptures": {
             "0": {
-              "name": "punctuation.definition.code.marker"
+              "name": "punctuation.definition.code.kedi"
             }
           },
           "endCaptures": {
             "0": {
-              "name": "punctuation.definition.code.marker"
+              "name": "punctuation.definition.code.kedi"
             }
           },
           "patterns": [
@@ -658,32 +802,64 @@
         { "include": "#inline-python" },
         { "include": "#substitution" },
         { "include": "#strings" },
-        { "match": ",", "name": "punctuation.separator.arguments.marker" },
+        { "match": ",", "name": "punctuation.separator.arguments.kedi" },
         {
           "match": "[^,<>`\\n\\r\\[\\]\\)]+",
-          "name": "string.unquoted.argument.marker"
+          "name": "string.unquoted.argument.kedi"
         }
       ]
     },
     "output": {
       "patterns": [
         {
+          "begin": "(\\[)(?!\\[)([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*(`)(?![^`]*``)",
+          "end": "(`)(\\])(?!\\])",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.variable.begin.kedi"
+            },
+            "2": {
+              "name": "variable.other.output.kedi"
+            },
+            "3": {
+              "name": "punctuation.separator.kedi"
+            },
+            "4": {
+              "name": "punctuation.definition.code.kedi"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.code.kedi"
+            },
+            "2": {
+              "name": "punctuation.definition.variable.end.kedi"
+            }
+          },
+          "contentName": "storage.type.kedi",
+          "patterns": [
+            {
+              "include": "source.python"
+            }
+          ]
+        },
+        {
           "match": "(\\[)(?!\\[)([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_\\[\\]]*)(\\])(?!\\])",
           "captures": {
             "1": {
-              "name": "punctuation.definition.variable.begin.marker"
+              "name": "punctuation.definition.variable.begin.kedi"
             },
             "2": {
-              "name": "variable.other.output.marker"
+              "name": "variable.other.output.kedi"
             },
             "3": {
-              "name": "punctuation.separator.marker"
+              "name": "punctuation.separator.kedi"
             },
             "4": {
-              "name": "storage.type.marker"
+              "name": "storage.type.kedi"
             },
             "5": {
-              "name": "punctuation.definition.variable.end.marker"
+              "name": "punctuation.definition.variable.end.kedi"
             }
           }
         },
@@ -691,13 +867,13 @@
           "match": "(\\[)(?!\\[)([A-Za-z_][A-Za-z0-9_]*)(\\])(?!\\])",
           "captures": {
             "1": {
-              "name": "punctuation.definition.variable.begin.marker"
+              "name": "punctuation.definition.variable.begin.kedi"
             },
             "2": {
-              "name": "variable.other.output.marker"
+              "name": "variable.other.output.kedi"
             },
             "3": {
-              "name": "punctuation.definition.variable.end.marker"
+              "name": "punctuation.definition.variable.end.kedi"
             }
           }
         }
@@ -706,31 +882,35 @@
     "escaped-chars": {
       "patterns": [
         {
+          "match": "\\\\(n|t|s)",
+          "name": "constant.character.escape.kedi"
+        },
+        {
           "match": "\\\\[<>=@,~()\\[\\]`#]|\\\\\\\\",
-          "name": "constant.character.escape.marker"
+          "name": "constant.character.escape.kedi"
         }
       ]
     },
     "strings": {
       "patterns": [
         {
-          "name": "string.quoted.double.marker",
+          "name": "string.quoted.double.kedi",
           "begin": "\"",
           "end": "\"",
           "patterns": [
             {
-              "name": "constant.character.escape.marker",
+              "name": "constant.character.escape.kedi",
               "match": "\\\\."
             }
           ]
         },
         {
-          "name": "string.quoted.single.marker",
+          "name": "string.quoted.single.kedi",
           "begin": "'",
           "end": "'",
           "patterns": [
             {
-              "name": "constant.character.escape.marker",
+              "name": "constant.character.escape.kedi",
               "match": "\\\\."
             }
           ]
@@ -741,10 +921,10 @@
       "patterns": [
         {
           "match": "(?<!#)(#)(?!#).*?$",
-          "name": "comment.line.number-sign.marker",
+          "name": "comment.line.number-sign.kedi",
           "captures": {
             "1": {
-              "name": "punctuation.definition.comment.marker"
+              "name": "punctuation.definition.comment.kedi"
             }
           }
         }

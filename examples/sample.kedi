@@ -1,11 +1,11 @@
-# Marker Language Example
-# This file demonstrates various Marker DSL features
+# Kedi Language Example
+# This file demonstrates various Kedi DSL features
 
 @get_country(city):
   <city> is located in [country: str].
   = <country>
 
-Some marker string
+Some kedi string
 @get_language(country: str) -> str:
   The primary language spoken in <country> is [language: str]. # COMMENT
   = <language>
