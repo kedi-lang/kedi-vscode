@@ -1,5 +1,6 @@
 .vscode/**
 .vscode-test/**
+AGENTS.md
 .gitignore
 .gitattributes
 **/*.map

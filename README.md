@@ -29,19 +29,27 @@ Kedi is a lightweight DSL for orchestrating LLM workflows. This extension ships 
 
 ## Configuration
 
-### Bracket Colorization
+The extension starts `kedi-lsp` with the Python interpreter selected by the Microsoft Python extension when possible. Override the server path only when the active interpreter cannot import `kedi`:
 
-By default, VS Code's bracket pair colorizer is **disabled for Kedi files** to ensure escape sequences like `\[` and `\]` highlight correctly as escape characters rather than as brackets. The extension provides a setting to enable bracket colorization for Kedi files if desired:
-
-1. Open VS Code Settings (Ctrl/Cmd + ,)
-2. Search for "Kedi"
-3. Check "Kedi: Bracket Colorization" to enable it
-
-Alternatively, add this to your VS Code settings.json:
 ```json
 {
-  "kedi.bracketColorization": true
+  "kedi.lsp.usePythonExtension": false,
+  "kedi.lsp.pythonPath": "/path/to/python"
 }
 ```
 
-**How it works**: When this setting is disabled (default), the extension automatically disables VS Code's global bracket colorizer when you're viewing Kedi files, ensuring escape sequences highlight correctly. When you switch to other file types, the original bracket colorizer setting is restored.
+For final fallback without an interpreter path, configure the command used on `PATH`:
+
+```json
+{
+  "kedi.lsp.serverCommand": "kedi-lsp"
+}
+```
+
+Embedded Python hover, go-to-definition, and references are enabled by default for fenced Python blocks and inline backtick Python regions:
+
+```json
+{
+  "kedi.embeddedPython.enable": true
+}
+```
