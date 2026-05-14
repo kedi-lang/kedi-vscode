@@ -48,6 +48,12 @@
                 }
             }
         ],
+        "configurationDefaults": {
+            "[kedi]": {
+                "editor.defaultFormatter": "dyigitpolat.kedi-vscode",
+                "editor.semanticHighlighting.enabled": true
+            }
+        },
         "configuration": {
             "type": "object",
             "title": "Kedi Language",
