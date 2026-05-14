@@ -1,37 +1,36 @@
 {
     "name": "kedi-vscode",
-    "displayName": "Kedi-Lang Syntax",
-    "description": "Syntax highlighting and language support for Kedi DSL",
-    "version": "1.0.8",
+    "displayName": "Kedi-Lang",
+    "description": "LSP-powered language support for Kedi DSL: highlighting via semantic tokens (tree-sitter on the server), diagnostics, hover, go-to-definition, references, rename, outline, signature help, inlay hints, formatting, plus Python LSP feature forwarding inside fenced ```python``` blocks.",
+    "version": "2.0.0",
     "publisher": "dyigitpolat",
     "icon": "icon.png",
     "engines": {
-        "vscode": "^1.70.0"
+        "vscode": "^1.85.0"
     },
     "categories": [
         "Programming Languages"
     ],
     "keywords": [
         "kedi",
+        "kedi-lang",
         "dsl",
         "llm",
         "prompting",
-        "kedilang",
-        "syntax",
-        "language",
-        "highlighting",
-        "kedi-lang",
-        "kedi-language"
+        "language-server"
     ],
     "repository": {
         "type": "git",
         "url": "https://github.com/dyigitpolat/kedi-vscode"
     },
-  "main": "./out/extension.js",
-  "activationEvents": [
-    "onLanguage:kedi"
-  ],
-  "contributes": {
+    "main": "./dist/extension.js",
+    "activationEvents": [
+        "onLanguage:kedi"
+    ],
+    "extensionDependencies": [
+        "ms-python.python"
+    ],
+    "contributes": {
         "languages": [
             {
                 "id": "kedi",
@@ -52,34 +51,72 @@
         "configuration": {
             "type": "object",
             "title": "Kedi Language",
-            "properties": {}
+            "properties": {
+                "kedi.lsp.usePythonExtension": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Spawn the kedi-lsp server with the Python interpreter selected by the Microsoft Python extension (env-aware: venv, conda, pyenv, poetry, uv, etc.). When the interpreter changes in the IDE, the server is restarted automatically."
+                },
+                "kedi.lsp.pythonPath": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Explicit Python interpreter path to use when kedi.lsp.usePythonExtension is false or the Python extension is unavailable. The server is launched as `<pythonPath> -m kedi.lsp.server`."
+                },
+                "kedi.lsp.serverCommand": {
+                    "type": "string",
+                    "default": "kedi-lsp",
+                    "description": "Final fallback command spawned over stdio when no Python interpreter could be resolved (must be on PATH)."
+                },
+                "kedi.lsp.trace.server": {
+                    "type": "string",
+                    "enum": [
+                        "off",
+                        "messages",
+                        "verbose"
+                    ],
+                    "default": "off",
+                    "description": "Trace level for the LSP client/server channel (visible in the 'Kedi Language Server' output panel)."
+                },
+                "kedi.embeddedPython.enable": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Forward Hover / Go-to-Definition / Find References / Document Symbols to the Python language server (Pylance/Pyright) when the cursor is inside a fenced ```python``` block or a backtick `python_expr` region."
+                }
+            }
         },
-        "grammars": [
+        "snippets": [
             {
                 "language": "kedi",
-                "scopeName": "source.kedi",
-                "path": "./syntaxes/kedi.tmLanguage.json"
+                "path": "./snippets/marker.code-snippets"
             }
         ],
-        "snippets": [
-          {
-            "language": "kedi",
-            "path": "./snippets/kedi.code-snippets"
-          }
-        ],
-        "commands": []
+        "commands": [
+            {
+                "command": "kedi.restartServer",
+                "title": "Kedi: Restart Language Server",
+                "category": "Kedi"
+            }
+        ]
+    },
+    "dependencies": {
+        "vscode-languageclient": "^9.0.1"
     },
     "devDependencies": {
         "@types/node": "^18.0.0",
-        "@types/vscode": "^1.70.0",
-        "@vscode/vsce": "^2.19.0",
+        "@types/vscode": "^1.85.0",
+        "@vscode/vsce": "~2.22.0",
+        "esbuild": "^0.21.5",
         "typescript": "^5.9.3"
     },
     "scripts": {
-        "vscode:prepublish": "npm run compile",
-        "compile": "tsc -p ./",
-        "watch": "tsc -watch -p ./",
+        "vscode:prepublish": "npm run bundle",
+        "compile": "tsc -p ./ --noEmit",
+        "bundle": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18 --minify",
+        "watch": "tsc -watch -p ./ --noEmit",
         "package": "vsce package",
         "publish": "vsce publish"
+    },
+    "overrides": {
+        "cheerio": "1.0.0-rc.12"
     }
 }

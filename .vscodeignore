@@ -7,6 +7,9 @@
 **/tsconfig.json
 **/.eslintrc.json
 node_modules/**
+out/**
+src/**
+esbuild.config.*
 .git/**
 *.vsix
 .DS_Store
