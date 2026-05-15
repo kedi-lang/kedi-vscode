@@ -53,3 +53,5 @@ Embedded Python hover, go-to-definition, and references are enabled by default f
   "kedi.embeddedPython.enable": true
 }
 ```
+
+For Pylance compatibility, the extension writes generated Python shadow files under VS Code's extension storage directory, outside the current workspace. They are cache-like files and can be deleted; the extension regenerates them when needed.

@@ -9,10 +9,9 @@
  * For positions inside a fenced ```python``` block or an inline
  * `python_expr` region, the `embeddedPython` module forwards
  * Hover/Definition/References to whatever Python LSP the user has
- * (Pylance/Pyright via ms-python.python), and the `embeddedTokens`
- * middleware merges Python *semantic tokens* into the Kedi LSP's
- * token stream so Python keywords, strings, functions, etc. light
- * up inside Kedi documents.
+ * (Pylance/Pyright via ms-python.python). The Kedi LSP also emits
+ * Python semantic tokens for those embedded regions so Python
+ * keywords, strings, functions, etc. light up inside Kedi documents.
  *
  * The server is spawned with the **editor's** active Python
  * interpreter — read from the official Python extension's API so
@@ -129,12 +128,6 @@ async function startClient(
         return;
     }
 
-    // Semantic tokens for both Kedi *and* embedded Python come from
-    // the LSP server (kedi-lsp parses Python regions with
-    // tree-sitter-python and emits LSP tokens in the same response).
-    // No middleware needed.
-    void emb;
-
     const clientOptions: LanguageClientOptions = {
         documentSelector: [
             { scheme: "file", language: "kedi" },
@@ -147,6 +140,14 @@ async function startClient(
         },
         initializationOptions: {
             trace,
+        },
+        middleware: {
+            provideHover: async (document, position, token, next) => {
+                if (await isEmbeddedPythonPosition(emb, document, position)) {
+                    return undefined;
+                }
+                return next(document, position, token);
+            },
         },
     };
 
@@ -183,6 +184,24 @@ async function startClient(
             outputChannel?.show(true);
         }
         client = undefined;
+    }
+}
+
+async function isEmbeddedPythonPosition(
+    emb: EmbeddedPython,
+    document: vscode.TextDocument,
+    position: vscode.Position
+): Promise<boolean> {
+    if (!emb.isEnabled()) {
+        return false;
+    }
+    try {
+        const ranges = await emb.getPythonRanges(document);
+        return ranges.some((range) =>
+            new vscode.Range(range.start, range.end).contains(position)
+        );
+    } catch {
+        return false;
     }
 }
 

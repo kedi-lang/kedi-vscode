@@ -2,7 +2,7 @@
   "name": "kedi-vscode",
   "displayName": "Kedi-Lang",
   "description": "LSP-powered language support for Kedi DSL: highlighting via semantic tokens (tree-sitter on the server), diagnostics, hover, go-to-definition, references, rename, outline, signature help, inlay hints, formatting, plus Python LSP feature forwarding inside fenced ```python``` blocks.",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "publisher": "dyigitpolat",
   "icon": "icon.png",
   "engines": {
