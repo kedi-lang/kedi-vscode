@@ -21,16 +21,17 @@
  * `undefined` and VS Code falls through to the Kedi LSP via the
  * LanguageClient registered in `extension.ts`.
  *
- * The virtual document is fetched via the server's
- * `kedi/pythonVirtualDocument` custom request and cached / refreshed
- * on `onDidChangeTextDocument`.
+ * Python-region detection comes from the server's lightweight
+ * `kedi/pythonRanges` request. Hover / definition / references fetch
+ * a position-focused `kedi/pythonVirtualDocument` on demand and sync
+ * it to a shadow `.py` file outside the workspace.
  */
 
 import * as vscode from "vscode";
 import { createHash } from "crypto";
 import { LanguageClient } from "vscode-languageclient/node";
 
-const PYTHON_PROVIDER_RETRY_DELAYS_MS = [0, 100, 250, 500, 1000, 1500];
+const PYTHON_PROVIDER_RETRY_DELAYS_MS = [0, 25, 75, 150];
 const EMBEDDED_PYTHON_DIR = "embedded-python";
 const HOVER_KIND_PREFIX_RE = /^\(([^)\r\n]+)\)\s+(.+)$/;
 const PYTHON_FENCE_RE = /```(?:python|py)\b/i;
@@ -60,11 +61,18 @@ interface SourceMapEntry {
 }
 
 interface CachedDoc {
+    uri: string;
     version: number;
+    focusKey: string;
     ranges: PythonRange[];
     virtualText: string;
     mappings: SourceMapEntry[];
     symbols: SourceMapEntry[];
+}
+
+interface RangeCacheEntry {
+    version: number;
+    ranges: PythonRange[];
 }
 
 interface VirtualRoot {
@@ -80,8 +88,6 @@ export interface PythonRangeInfo {
 export interface EmbeddedPython {
     setClientGetter(getter: () => LanguageClient | undefined): void;
     getPythonRanges(doc: vscode.TextDocument): Promise<PythonRangeInfo[]>;
-    kediToVirtual(uri: vscode.Uri): vscode.Uri;
-    ensureVirtualOpen(doc: vscode.TextDocument): Promise<void>;
     isEnabled(): boolean;
     dispose(): void;
 }
@@ -91,21 +97,35 @@ export function registerEmbeddedPython(
     initialClientGetter: () => LanguageClient | undefined
 ): EmbeddedPython {
     let clientGetter = initialClientGetter;
-    const cache = new Map<string, CachedDoc>(); // key = kedi-doc URI string
+    const rangeCache = new Map<string, RangeCacheEntry>();
+    const rangeRequests = new Map<string, Promise<PythonRange[]>>();
+    const virtualCache = new Map<string, CachedDoc>();
+    const virtualRequests = new Map<string, Promise<CachedDoc>>();
+    const shadowCache = new Map<string, string>();
+    let pythonProvidersActivation: Promise<void> | undefined;
 
-    // Refresh + notify on Kedi-doc edits.
     context.subscriptions.push(
-        vscode.workspace.onDidChangeTextDocument(async (e) => {
+        vscode.workspace.onDidOpenTextDocument((doc) => {
+            if (doc.languageId !== "kedi") {
+                return;
+            }
+            void getPythonRangesPublic(doc);
+            void activatePythonProviders().catch(() => undefined);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeTextDocument((e) => {
             if (e.document.languageId !== "kedi") {
                 return;
             }
-            cache.delete(e.document.uri.toString());
+            clearDocumentState(e.document.uri);
         })
     );
 
     context.subscriptions.push(
         vscode.workspace.onDidCloseTextDocument((doc) => {
-            cache.delete(doc.uri.toString());
+            clearDocumentState(doc.uri);
         })
     );
 
@@ -120,13 +140,15 @@ export function registerEmbeddedPython(
         if (!isEmbedEnabled()) {
             return undefined;
         }
-        const cached = await ensureCached(doc);
+        const focused = await ensureFocusedVirtualDocument(doc, pos);
+        if (!focused) {
+            return undefined;
+        }
+        const { cached, virtualUri } = focused;
         const virtualPos = sourcePositionToVirtual(cached, pos);
         if (!virtualPos) {
             return undefined;
         }
-        await ensureVirtualOpen(doc);
-        const virtualUri = kediToVirtual(doc.uri);
         const hovers = await executePythonProviderWithRetry<vscode.Hover[]>(
             "vscode.executeHoverProvider",
             virtualUri,
@@ -156,13 +178,15 @@ export function registerEmbeddedPython(
         if (!isEmbedEnabled()) {
             return undefined;
         }
-        const cached = await ensureCached(doc);
+        const focused = await ensureFocusedVirtualDocument(doc, pos);
+        if (!focused) {
+            return undefined;
+        }
+        const { cached, virtualUri } = focused;
         const virtualPos = sourcePositionToVirtual(cached, pos);
         if (!virtualPos) {
             return undefined;
         }
-        await ensureVirtualOpen(doc);
-        const virtualUri = kediToVirtual(doc.uri);
         const defs = await executePythonProviderWithRetry<
             vscode.Location[] | vscode.LocationLink[]
         >("vscode.executeDefinitionProvider", virtualUri, virtualPos);
@@ -183,13 +207,15 @@ export function registerEmbeddedPython(
         if (!isEmbedEnabled()) {
             return undefined;
         }
-        const cached = await ensureCached(doc);
+        const focused = await ensureFocusedVirtualDocument(doc, pos);
+        if (!focused) {
+            return undefined;
+        }
+        const { cached, virtualUri } = focused;
         const virtualPos = sourcePositionToVirtual(cached, pos);
         if (!virtualPos) {
             return undefined;
         }
-        await ensureVirtualOpen(doc);
-        const virtualUri = kediToVirtual(doc.uri);
         const refs = await executePythonProviderWithRetry<vscode.Location[]>(
             "vscode.executeReferenceProvider",
             virtualUri,
@@ -238,42 +264,129 @@ export function registerEmbeddedPython(
             .get<boolean>("embeddedPython.enable", true);
     }
 
-    async function ensureCached(doc: vscode.TextDocument): Promise<CachedDoc> {
-        const key = doc.uri.toString();
-        const hit = cache.get(key);
-        if (hit && hit.version === doc.version) {
-            return hit;
+    async function ensureFocusedVirtualDocument(
+        doc: vscode.TextDocument,
+        pos: vscode.Position
+    ): Promise<{ cached: CachedDoc; virtualUri: vscode.Uri } | undefined> {
+        const hot = findFocusedCachedDoc(doc, pos);
+        if (hot) {
+            const virtualUri = kediToVirtual(doc.uri, hot.focusKey);
+            await activatePythonProviders();
+            await syncShadowDocument(virtualUri, hot.virtualText);
+            return { cached: hot, virtualUri };
         }
-        const virtual = await fetchPythonVirtualDocument(doc);
-        const fresh: CachedDoc = {
-            version: doc.version,
-            ranges: virtual.ranges,
-            virtualText: virtual.text,
-            mappings: virtual.mappings,
-            symbols: virtual.symbols,
-        };
-        cache.set(key, fresh);
-        return fresh;
+
+        const requestKey = makeVirtualRequestKey(doc.uri, doc.version, pos.line);
+        let request = virtualRequests.get(requestKey);
+        if (!request) {
+            request = fetchPythonVirtualDocument(
+                doc.uri,
+                doc.version,
+                doc.getText(),
+                pos.line
+            )
+                .then((virtual) =>
+                    cacheFocusedVirtualDocument(
+                        doc.uri,
+                        doc.version,
+                        pos.line,
+                        virtual
+                    )
+                )
+                .finally(() => {
+                    virtualRequests.delete(requestKey);
+                });
+            virtualRequests.set(requestKey, request);
+        }
+
+        const cached = await request;
+        const virtualUri = kediToVirtual(doc.uri, cached.focusKey);
+        await activatePythonProviders();
+        await syncShadowDocument(virtualUri, cached.virtualText);
+        return { cached, virtualUri };
+    }
+
+    function findFocusedCachedDoc(
+        doc: vscode.TextDocument,
+        pos: vscode.Position
+    ): CachedDoc | undefined {
+        for (const cached of virtualCache.values()) {
+            if (cached.uri !== doc.uri.toString() || cached.version !== doc.version) {
+                continue;
+            }
+            if (sourcePositionToVirtual(cached, pos)) {
+                return cached;
+            }
+        }
+        return undefined;
+    }
+
+    async function fetchPythonRanges(
+        uri: vscode.Uri,
+        version: number,
+        text: string
+    ): Promise<PythonRange[]> {
+        const client = clientGetter();
+        if (!client) {
+            return [];
+        }
+        try {
+            const response = (await client.sendRequest("kedi/pythonRanges", {
+                textDocument: { uri: uri.toString(), version },
+                text,
+            })) as {
+                ranges?: Array<{
+                    kind: "fenced" | "inline";
+                    range?: RawRange;
+                    sourceRange?: RawRange;
+                    virtualRange?: RawRange;
+                    text: string;
+                }>;
+            };
+            return (response?.ranges ?? []).map((range) => ({
+                kind: range.kind,
+                text: range.text,
+                range: toRange(range.sourceRange ?? range.range),
+                virtualRange: range.virtualRange
+                    ? toRange(range.virtualRange)
+                    : undefined,
+            }));
+        } catch {
+            return [];
+        }
     }
 
     async function fetchPythonVirtualDocument(
-        doc: vscode.TextDocument
+        uri: vscode.Uri,
+        version: number,
+        text: string,
+        focusLine: number
     ): Promise<{
         text: string;
         ranges: PythonRange[];
         mappings: SourceMapEntry[];
         symbols: SourceMapEntry[];
+        focusKey?: string | null;
     }> {
         const client = clientGetter();
         if (!client) {
-            return { text: "", ranges: [], mappings: [], symbols: [] };
+            return {
+                text: "",
+                ranges: [],
+                mappings: [],
+                symbols: [],
+                focusKey: null,
+            };
         }
         try {
             const response = (await client.sendRequest("kedi/pythonVirtualDocument", {
-                textDocument: { uri: doc.uri.toString() },
+                textDocument: { uri: uri.toString(), version },
+                text,
+                focusLine,
             })) as {
                 uri: string;
                 text: string;
+                focusKey?: string | null;
                 ranges: Array<{
                     kind: "fenced" | "inline";
                     range?: RawRange;
@@ -295,27 +408,79 @@ export function registerEmbeddedPython(
             };
             return {
                 text: response?.text ?? "",
-                ranges: (response?.ranges ?? []).map((r) => ({
-                    kind: r.kind,
-                    text: r.text,
-                    range: toRange(r.sourceRange ?? r.range),
-                    virtualRange: r.virtualRange ? toRange(r.virtualRange) : undefined,
+                focusKey: response?.focusKey,
+                ranges: (response?.ranges ?? []).map((range) => ({
+                    kind: range.kind,
+                    text: range.text,
+                    range: toRange(range.sourceRange ?? range.range),
+                    virtualRange: range.virtualRange
+                        ? toRange(range.virtualRange)
+                        : undefined,
                 })),
-                mappings: (response?.mappings ?? []).map((m) => ({
-                    kind: m.kind,
-                    sourceRange: toRange(m.sourceRange),
-                    virtualRange: toRange(m.virtualRange),
+                mappings: (response?.mappings ?? []).map((mapping) => ({
+                    kind: mapping.kind,
+                    sourceRange: toRange(mapping.sourceRange),
+                    virtualRange: toRange(mapping.virtualRange),
                 })),
-                symbols: (response?.symbols ?? []).map((s) => ({
-                    kind: s.kind,
-                    name: s.name,
-                    sourceRange: toRange(s.sourceRange),
-                    virtualRange: toRange(s.virtualRange),
+                symbols: (response?.symbols ?? []).map((symbol) => ({
+                    kind: symbol.kind,
+                    name: symbol.name,
+                    sourceRange: toRange(symbol.sourceRange),
+                    virtualRange: toRange(symbol.virtualRange),
                 })),
             };
         } catch {
-            return { text: "", ranges: [], mappings: [], symbols: [] };
+            return {
+                text: "",
+                ranges: [],
+                mappings: [],
+                symbols: [],
+                focusKey: null,
+            };
         }
+    }
+
+    function cacheFocusedVirtualDocument(
+        uri: vscode.Uri,
+        version: number,
+        focusLine: number,
+        virtual: {
+            text: string;
+            ranges: PythonRange[];
+            mappings: SourceMapEntry[];
+            symbols: SourceMapEntry[];
+            focusKey?: string | null;
+        }
+    ): CachedDoc {
+        const focusKey = normalizeFocusKey(virtual.focusKey);
+        const cached: CachedDoc = {
+            uri: uri.toString(),
+            version,
+            focusKey,
+            ranges: virtual.ranges,
+            virtualText: virtual.text,
+            mappings: virtual.mappings,
+            symbols: virtual.symbols,
+        };
+        virtualCache.set(makeVirtualStableKey(uri, version, focusKey), cached);
+        virtualCache.set(makeVirtualRequestKey(uri, version, focusLine), cached);
+        return cached;
+    }
+
+    function makeVirtualStableKey(
+        uri: vscode.Uri,
+        version: number,
+        focusKey: string
+    ): string {
+        return `${uri.toString()}::${version}::focus:${focusKey}`;
+    }
+
+    function makeVirtualRequestKey(
+        uri: vscode.Uri,
+        version: number,
+        focusLine: number
+    ): string {
+        return `${uri.toString()}::${version}::line:${focusLine}`;
     }
 
     function toRange(raw: RawRange | undefined): vscode.Range {
@@ -476,8 +641,18 @@ export function registerEmbeddedPython(
     }
 
     async function activatePythonProviders(): Promise<void> {
-        await vscode.extensions.getExtension("ms-python.python")?.activate();
-        await vscode.extensions.getExtension("ms-python.vscode-pylance")?.activate();
+        if (!pythonProvidersActivation) {
+            pythonProvidersActivation = (async () => {
+                await vscode.extensions.getExtension("ms-python.python")?.activate();
+                await vscode.extensions
+                    .getExtension("ms-python.vscode-pylance")
+                    ?.activate();
+            })().catch((error) => {
+                pythonProvidersActivation = undefined;
+                throw error;
+            });
+        }
+        await pythonProvidersActivation;
     }
 
     async function executePythonProviderWithRetry<T extends unknown[]>(
@@ -557,9 +732,12 @@ export function registerEmbeddedPython(
         return mapped as vscode.Location[] | vscode.LocationLink[];
     }
 
-    function kediToVirtual(kediUri: vscode.Uri): vscode.Uri {
+    function kediToVirtual(
+        kediUri: vscode.Uri,
+        focusKey: string = "global"
+    ): vscode.Uri {
         const digest = createHash("sha1")
-            .update(kediUri.toString())
+            .update(`${kediUri.toString()}\0${focusKey}`)
             .digest("hex");
         return vscode.Uri.joinPath(virtualRootFor().uri, `${digest}.py`);
     }
@@ -574,49 +752,153 @@ export function registerEmbeddedPython(
     async function getPythonRangesPublic(
         doc: vscode.TextDocument
     ): Promise<PythonRangeInfo[]> {
-        const cached = await ensureCached(doc);
-        return cached.ranges.map((r) => ({
+        const key = doc.uri.toString();
+        const hit = rangeCache.get(key);
+        if (hit && hit.version === doc.version) {
+            return hit.ranges.map((range) => ({
+                kind: range.kind,
+                start: range.range.start,
+                end: range.range.end,
+            }));
+        }
+
+        let request = rangeRequests.get(key);
+        if (!request) {
+            request = fetchPythonRanges(doc.uri, doc.version, doc.getText()).finally(() =>
+                rangeRequests.delete(key)
+            );
+            rangeRequests.set(key, request);
+        }
+
+        const ranges = await request;
+        rangeCache.set(key, { version: doc.version, ranges });
+        return ranges.map((r) => ({
             kind: r.kind,
             start: r.range.start,
             end: r.range.end,
         }));
     }
 
-    async function ensureVirtualOpen(doc: vscode.TextDocument): Promise<void> {
-        const cached = await ensureCached(doc);
-        const virtualUri = kediToVirtual(doc.uri);
-        const root = virtualRootFor();
-        await vscode.workspace.fs.createDirectory(root.uri);
-        await vscode.workspace.fs.writeFile(
-            virtualUri,
-            Buffer.from(cached.virtualText, "utf8")
+    async function syncVirtualDocument(
+        virtualUri: vscode.Uri,
+        text: string
+    ): Promise<vscode.TextDocument> {
+        const openDoc = vscode.workspace.textDocuments.find(
+            (candidate) => candidate.uri.toString() === virtualUri.toString()
         );
-        try {
-            const virtualDoc = await vscode.workspace.openTextDocument(virtualUri);
-            if (virtualDoc.languageId !== "python") {
-                await vscode.languages.setTextDocumentLanguage(virtualDoc, "python");
-            }
-            await activatePythonProviders();
-        } catch {
-            /* swallow — Python forwarding will simply return no provider result */
+        if (!openDoc) {
+            await vscode.workspace.fs.writeFile(virtualUri, Buffer.from(text, "utf8"));
+            return vscode.workspace.openTextDocument(virtualUri);
         }
+        if (openDoc.getText() === text) {
+            return ensurePythonDocumentLanguage(openDoc);
+        }
+
+        const edit = new vscode.WorkspaceEdit();
+        edit.replace(virtualUri, fullDocumentRange(openDoc), text);
+        const applied = await vscode.workspace.applyEdit(edit);
+        if (applied) {
+            const refreshed =
+                vscode.workspace.textDocuments.find(
+                    (candidate) =>
+                        candidate.uri.toString() === virtualUri.toString()
+                ) ?? openDoc;
+            return ensurePythonDocumentLanguage(refreshed);
+        }
+
+        await vscode.workspace.fs.writeFile(virtualUri, Buffer.from(text, "utf8"));
+        return ensurePythonDocumentLanguage(
+            await vscode.workspace.openTextDocument(virtualUri)
+        );
+    }
+
+    function fullDocumentRange(doc: vscode.TextDocument): vscode.Range {
+        const lastLine = doc.lineAt(Math.max(0, doc.lineCount - 1));
+        return new vscode.Range(new vscode.Position(0, 0), lastLine.range.end);
     }
 
     return {
         setClientGetter(getter) {
             clientGetter = getter;
-            // Invalidate cache after a restart — server may have
-            // changed and the previous ranges may be stale.
-            cache.clear();
+            clearAllDocumentState();
+            if (clientGetter()) {
+                for (const doc of vscode.workspace.textDocuments) {
+                    if (doc.languageId === "kedi") {
+                        void getPythonRangesPublic(doc);
+                    }
+                }
+            }
         },
         getPythonRanges: getPythonRangesPublic,
-        kediToVirtual,
-        ensureVirtualOpen,
         isEnabled: isEmbedEnabled,
         dispose() {
-            cache.clear();
+            clearAllDocumentState();
         },
     };
+
+    function clearDocumentState(uri: vscode.Uri): void {
+        const uriText = uri.toString();
+        rangeCache.delete(uriText);
+        rangeRequests.delete(uriText);
+        for (const [key, cached] of virtualCache.entries()) {
+            if (cached.uri !== uriText) {
+                continue;
+            }
+            shadowCache.delete(kediToVirtual(uri, cached.focusKey).toString());
+            virtualCache.delete(key);
+        }
+        for (const key of virtualRequests.keys()) {
+            if (key.startsWith(`${uriText}::`)) {
+                virtualRequests.delete(key);
+            }
+        }
+    }
+
+    function clearAllDocumentState(): void {
+        rangeCache.clear();
+        rangeRequests.clear();
+        virtualCache.clear();
+        virtualRequests.clear();
+        shadowCache.clear();
+    }
+
+    async function syncShadowDocument(
+        virtualUri: vscode.Uri,
+        text: string
+    ): Promise<void> {
+        const key = virtualUri.toString();
+        const openDoc = vscode.workspace.textDocuments.find(
+            (candidate) => candidate.uri.toString() === key
+        );
+        if (shadowCache.get(key) === text) {
+            if (openDoc) {
+                await ensurePythonDocumentLanguage(openDoc);
+            }
+            return;
+        }
+        if (openDoc && openDoc.getText() === text) {
+            shadowCache.set(key, text);
+            await ensurePythonDocumentLanguage(openDoc);
+            return;
+        }
+        const root = virtualRootFor();
+        await vscode.workspace.fs.createDirectory(root.uri);
+        await syncVirtualDocument(virtualUri, text);
+        shadowCache.set(key, text);
+    }
+
+    function normalizeFocusKey(focusKey: string | null | undefined): string {
+        return focusKey || "global";
+    }
+
+    async function ensurePythonDocumentLanguage(
+        doc: vscode.TextDocument
+    ): Promise<vscode.TextDocument> {
+        if (doc.languageId === "python") {
+            return doc;
+        }
+        return vscode.languages.setTextDocumentLanguage(doc, "python");
+    }
 }
 
 function formatPythonHoverContents(
