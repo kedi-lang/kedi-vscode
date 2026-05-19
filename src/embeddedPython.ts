@@ -33,6 +33,8 @@ import { LanguageClient } from "vscode-languageclient/node";
 
 const PYTHON_PROVIDER_RETRY_DELAYS_MS = [0, 25, 75, 150];
 const EMBEDDED_PYTHON_DIR = "embedded-python";
+const SHADOW_FILE_TTL_MS = 24 * 60 * 60 * 1000;
+const SHADOW_SWEEP_INTERVAL_MS = 30 * 60 * 1000;
 const HOVER_KIND_PREFIX_RE = /^\(([^)\r\n]+)\)\s+(.+)$/;
 const PYTHON_FENCE_RE = /```(?:python|py)\b/i;
 
@@ -102,6 +104,7 @@ export function registerEmbeddedPython(
     const virtualCache = new Map<string, CachedDoc>();
     const virtualRequests = new Map<string, Promise<CachedDoc>>();
     const shadowCache = new Map<string, string>();
+    let lastShadowCleanupAt = 0;
     let pythonProvidersActivation: Promise<void> | undefined;
 
     context.subscriptions.push(
@@ -119,13 +122,16 @@ export function registerEmbeddedPython(
             if (e.document.languageId !== "kedi") {
                 return;
             }
-            clearDocumentState(e.document.uri);
+            void clearDocumentState(e.document.uri);
         })
     );
 
     context.subscriptions.push(
         vscode.workspace.onDidCloseTextDocument((doc) => {
-            clearDocumentState(doc.uri);
+            if (doc.languageId !== "kedi") {
+                return;
+            }
+            void clearDocumentState(doc.uri, { deleteShadows: true });
         })
     );
 
@@ -820,7 +826,7 @@ export function registerEmbeddedPython(
     return {
         setClientGetter(getter) {
             clientGetter = getter;
-            clearAllDocumentState();
+            void clearAllDocumentState();
             if (clientGetter()) {
                 for (const doc of vscode.workspace.textDocuments) {
                     if (doc.languageId === "kedi") {
@@ -832,19 +838,27 @@ export function registerEmbeddedPython(
         getPythonRanges: getPythonRangesPublic,
         isEnabled: isEmbedEnabled,
         dispose() {
-            clearAllDocumentState();
+            void clearAllDocumentState();
         },
     };
 
-    function clearDocumentState(uri: vscode.Uri): void {
+    async function clearDocumentState(
+        uri: vscode.Uri,
+        options?: { deleteShadows?: boolean }
+    ): Promise<void> {
         const uriText = uri.toString();
         rangeCache.delete(uriText);
         rangeRequests.delete(uriText);
+        const shadowUris = new Set<string>();
         for (const [key, cached] of virtualCache.entries()) {
             if (cached.uri !== uriText) {
                 continue;
             }
-            shadowCache.delete(kediToVirtual(uri, cached.focusKey).toString());
+            const shadowUri = kediToVirtual(uri, cached.focusKey);
+            shadowCache.delete(shadowUri.toString());
+            if (options?.deleteShadows) {
+                shadowUris.add(shadowUri.toString());
+            }
             virtualCache.delete(key);
         }
         for (const key of virtualRequests.keys()) {
@@ -852,20 +866,37 @@ export function registerEmbeddedPython(
                 virtualRequests.delete(key);
             }
         }
+        if (options?.deleteShadows) {
+            await Promise.all(
+                [...shadowUris].map((shadowUri) =>
+                    deleteShadowDocument(vscode.Uri.parse(shadowUri))
+                )
+            );
+        }
     }
 
-    function clearAllDocumentState(): void {
+    async function clearAllDocumentState(): Promise<void> {
         rangeCache.clear();
         rangeRequests.clear();
+        const shadowUris = new Set<string>();
+        for (const cached of virtualCache.values()) {
+            shadowUris.add(kediToVirtual(vscode.Uri.parse(cached.uri), cached.focusKey).toString());
+        }
         virtualCache.clear();
         virtualRequests.clear();
         shadowCache.clear();
+        await Promise.all(
+            [...shadowUris].map((shadowUri) =>
+                deleteShadowDocument(vscode.Uri.parse(shadowUri))
+            )
+        );
     }
 
     async function syncShadowDocument(
         virtualUri: vscode.Uri,
         text: string
     ): Promise<void> {
+        await maybeCleanupShadowFiles();
         const key = virtualUri.toString();
         const openDoc = vscode.workspace.textDocuments.find(
             (candidate) => candidate.uri.toString() === key
@@ -885,6 +916,46 @@ export function registerEmbeddedPython(
         await vscode.workspace.fs.createDirectory(root.uri);
         await syncVirtualDocument(virtualUri, text);
         shadowCache.set(key, text);
+    }
+
+    async function maybeCleanupShadowFiles(): Promise<void> {
+        const now = Date.now();
+        if (now - lastShadowCleanupAt < SHADOW_SWEEP_INTERVAL_MS) {
+            return;
+        }
+        lastShadowCleanupAt = now;
+        const root = virtualRootFor();
+        let entries: [string, vscode.FileType][];
+        try {
+            entries = await vscode.workspace.fs.readDirectory(root.uri);
+        } catch {
+            return;
+        }
+        await Promise.all(
+            entries.map(async ([name, type]) => {
+                if (type !== vscode.FileType.File || !name.endsWith(".py")) {
+                    return;
+                }
+                const fileUri = vscode.Uri.joinPath(root.uri, name);
+                try {
+                    const stat = await vscode.workspace.fs.stat(fileUri);
+                    if (now - stat.mtime > SHADOW_FILE_TTL_MS) {
+                        await deleteShadowDocument(fileUri);
+                    }
+                } catch {
+                    return;
+                }
+            })
+        );
+    }
+
+    async function deleteShadowDocument(virtualUri: vscode.Uri): Promise<void> {
+        shadowCache.delete(virtualUri.toString());
+        try {
+            await vscode.workspace.fs.delete(virtualUri);
+        } catch {
+            return;
+        }
     }
 
     function normalizeFocusKey(focusKey: string | null | undefined): string {
