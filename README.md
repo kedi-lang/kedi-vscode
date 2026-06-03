@@ -29,7 +29,7 @@ Kedi is a lightweight DSL for orchestrating LLM workflows. This extension ships 
 
 ## Configuration
 
-The extension starts `kedi-lsp` with the Python interpreter selected by the Microsoft Python extension when possible. Override the server path only when the active interpreter cannot import `kedi`:
+The extension prefers a workspace-local `./.venv/bin/kedi-lsp` (or Windows `.\.venv\Scripts\kedi-lsp.exe`) when present. Otherwise it starts `kedi-lsp` with the Python interpreter selected by the Microsoft Python extension when possible. Override the server path only when the active interpreter cannot import `kedi`:
 
 ```json
 {

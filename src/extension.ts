@@ -20,6 +20,8 @@
  */
 
 import * as vscode from "vscode";
+import * as fs from "fs";
+import * as path from "path";
 import {
     LanguageClient,
     LanguageClientOptions,
@@ -33,6 +35,13 @@ let client: LanguageClient | undefined;
 let embedded: EmbeddedPython | undefined;
 let pythonApi: any | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
+
+const WORKSPACE_LOCAL_KEDI_LSP_CANDIDATES = [
+    [".venv", "bin", "kedi-lsp"],
+    ["venv", "bin", "kedi-lsp"],
+    [".venv", "Scripts", "kedi-lsp.exe"],
+    ["venv", "Scripts", "kedi-lsp.exe"],
+];
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     outputChannel = vscode.window.createOutputChannel("Kedi Language Server");
@@ -210,6 +219,17 @@ async function resolveServerOptions(
     explicitPath: string,
     serverCommand: string
 ): Promise<ServerOptions | null> {
+    const workspaceServer = await resolveWorkspaceLocalServerCommand();
+    if (workspaceServer) {
+        outputChannel?.appendLine(
+            `Using workspace-local Kedi server: ${workspaceServer}`
+        );
+        return {
+            run: { command: workspaceServer, transport: TransportKind.stdio },
+            debug: { command: workspaceServer, transport: TransportKind.stdio },
+        };
+    }
+
     const py = await resolveInterpreterPath(usePythonExtension, explicitPath);
     if (py) {
         outputChannel?.appendLine(`Using Python interpreter: ${py}`);
@@ -234,6 +254,18 @@ async function resolveServerOptions(
         run: { command: serverCommand, transport: TransportKind.stdio },
         debug: { command: serverCommand, transport: TransportKind.stdio },
     };
+}
+
+async function resolveWorkspaceLocalServerCommand(): Promise<string | undefined> {
+    for (const folder of prioritizedWorkspaceFolders()) {
+        for (const parts of WORKSPACE_LOCAL_KEDI_LSP_CANDIDATES) {
+            const candidate = path.join(folder.uri.fsPath, ...parts);
+            if (await fileExists(candidate)) {
+                return candidate;
+            }
+        }
+    }
+    return undefined;
 }
 
 async function resolveInterpreterPath(
@@ -262,6 +294,33 @@ async function resolveInterpreterPath(
         );
     }
     return undefined;
+}
+
+function prioritizedWorkspaceFolders(): vscode.WorkspaceFolder[] {
+    const folders = Array.from(vscode.workspace.workspaceFolders ?? []);
+    const activeUri = vscode.window.activeTextEditor?.document.uri;
+    if (!activeUri) {
+        return folders;
+    }
+
+    const activeFolder = vscode.workspace.getWorkspaceFolder(activeUri);
+    if (!activeFolder) {
+        return folders;
+    }
+
+    return [
+        activeFolder,
+        ...folders.filter((folder) => folder.uri.toString() !== activeFolder.uri.toString()),
+    ];
+}
+
+async function fileExists(candidate: string): Promise<boolean> {
+    try {
+        await fs.promises.access(candidate, fs.constants.F_OK);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 async function getPythonApi(): Promise<any | undefined> {
