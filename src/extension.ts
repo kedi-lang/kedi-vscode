@@ -174,10 +174,10 @@ async function startClient(
         outputChannel?.appendLine(`Failed to start kedi-lsp: ${err}`);
         const action = await vscode.window.showErrorMessage(
             `Could not start Kedi language server. ${err}`,
-            "Install (uv pip install kedi)",
+            "Install Kedi",
             "Open Output"
         );
-        if (action === "Install (uv pip install kedi)") {
+        if (action === "Install Kedi") {
             const term = vscode.window.createTerminal("Install Kedi");
             term.show();
             const py = await resolveInterpreterPath(
@@ -185,9 +185,12 @@ async function startClient(
                 explicitPath
             );
             if (py) {
-                term.sendText(`${shellQuote(py)} -m uv pip install kedi`);
+                const quotedPy = shellQuote(py);
+                term.sendText(
+                    `${quotedPy} -m uv pip install kedi || ${quotedPy} -m pip install kedi`
+                );
             } else {
-                term.sendText("uv pip install kedi");
+                term.sendText("uv pip install kedi || pip install kedi");
             }
         } else if (action === "Open Output") {
             outputChannel?.show(true);
