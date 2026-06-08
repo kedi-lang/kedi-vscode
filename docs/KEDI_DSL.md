@@ -40,6 +40,7 @@ Multiple inputs and outputs can appear on the same line:
 ### Program Structure
 
 A Kedi program consists of:
+- **Imports and exports**: Explicit module boundaries for sharing procedures, types, and values across `.kedi` files
 - **Template lines**: Free text with embedded substitutions and outputs
 - **Procedures**: Reusable named blocks of code
 - **Assignments**: Variable initialization and storage
@@ -51,7 +52,7 @@ A Kedi program consists of:
 
 - Indentation defines block scope (like Python)
 - Tabs count as width 4 for comparison
-- The preprocessor inserts virtual BEGIN/END kedis on indentation changes
+- The preprocessor inserts virtual BEGIN/END tokens on indentation changes
 
 ## Basic Syntax Elements
 
@@ -59,7 +60,7 @@ A Kedi program consists of:
 
 ```kedi
 # This is an inline comment
-Use ## to escape a literal # character
+Use \# to escape a literal # character
 
 ###
 This is a block comment.
@@ -69,6 +70,48 @@ It can span multiple lines.
 
 - Inline: Everything after `#` is ignored; use `##` for literal `#`
 - Block: Lines containing only `###` (trimmed) start/end blocks; must appear in matching pairs
+- Procedure docstrings: if the first statement inside a procedure body is a block comment, its body becomes the procedure's Python `__doc__` and is surfaced in editor hovers / virtual stubs
+
+### Module Imports and Exports
+
+Kedi modules can explicitly export top-level procedures, types, and values. Another `.kedi` file imports the module by file name without the `.kedi` suffix:
+
+```kedi
+> import: profiles
+
+= <get_profile(`"Ada"`)> has id <`profile_id`>
+```
+
+In `profiles.kedi`:
+
+```kedi
+~Profile(name: str, id: int)
+
+@get_profile(name: str) -> Profile:
+  = `Profile(name=name, id=1)`
+
+[profile_id: int] = `1`
+
+> export:
+  Profile
+  get_profile
+  profile_id
+```
+
+Imports resolve relative to the importing file. If no sibling module exists, Kedi falls back to bundled internal modules such as `> import: this`. Only names listed under `> export:` are visible to importers; non-exported procedures, types, and top-level values stay private to the module.
+
+To export every public name in a module, use `> export: *`:
+
+```kedi
+@get_name() -> str:
+  = Ada
+
+[xd: int] = `1`
+
+> export: *
+```
+
+Public names are names that do not start with `_`. If a module has no export directive, importing it does not expose any names.
 
 ### Template Lines
 
@@ -207,6 +250,19 @@ Message: <greet(Alice)>
 ```
 
 Supported types: `str`, `int`, `float`, `bool`, `list[T]`, plus any custom types defined in your program.
+
+### Default Parameters
+
+Procedure parameters can have single-line inline Python defaults:
+
+```kedi
+@format_count(count: int, label = `"items"`) -> str:
+  = `f"{count} {label}"`
+
+= <format_count(`3`)>
+```
+
+Required positional parameters must come before defaulted parameters, matching Python function semantics. Untyped parameters with defaults keep their native Python value; Kedi does not infer or coerce their type.
 
 You can use either regular or backtick-wrapped type annotations for parameters and return types. They work interchangeably and provide the same type safety guarantees.
 
@@ -389,6 +445,16 @@ return Person(name="Bob", age=25, email="bob@example.com")
 
 Fields without type annotations default to `str`. You can use backtick-wrapped type expressions in field definitions, parameters, returns, and variable assignments. The expressions are evaluated at runtime with access to prelude, globals, and local scope.
 
+Type fields can also have single-line inline Python defaults:
+
+```kedi
+~Person(name: str, salary: int = `0`, tags: list[str] = `[]`)
+
+= <`Person("Ada").model_dump_json()`>
+```
+
+Defaulted type fields must be annotated. Required fields must come before defaulted fields. Generated Kedi types are Pydantic `BaseModel` subclasses, so keyword construction and model APIs such as `model_dump_json()` remain available; Kedi also supports positional construction in field order.
+
 ## Advanced Features
 
 ### Multiline Strings
@@ -469,29 +535,113 @@ Notes:
 
 ### Evaluation Metrics
 
+Define dataset-aware metrics with automatic iteration:
+
 ````kedi
-@eval: get_cities:
-  > metric: city_count:
+@eval: prime_factors:
+  > data: cases:
     = ```
-    cities = get_cities("USA")
-    score = len(cities) / 50.0  # Normalize by expected
-    return (score, f"Found {len(cities)} cities")
-```
+    # Must return an iterable. Supported forms include:
+    # - items: [x1, x2, ...]
+    # - pairs/tuples: [((args_tuple), label), ...]
+    # - mappings: {x: y, ...}  (coerced to .items())
+    return {6:[2,3], 28:[2,2,7], 35:[5,7]}.items()
+    ```
+
+  > test_data: cases:
+    = ```
+    return {12:[2,2,3]}.items()
+    ```
+
+  > metric: correctness(cases):
+    = ```
+    # For each item in the dataset, the dataset name (`cases`) is bound.
+    # Use it directly or unpack as needed.
+    k, v = cases
+    return prime_factors(k) == v  # bools map to 1.0/0.0
+    ```
 ````
+
+Rules:
+- `> data: NAME:` defines the training dataset for the enclosing `@eval` suite and must return an iterable.
+- `> test_data: NAME:` (optional) defines a test dataset; when present, both train and test performance are reported.
+- `> metric: metric_name(NAME):` iterates automatically over the dataset named `NAME`, binding the dataset name as a variable for each item.
+- Only one metric per `@eval` suite is allowed. Multiple metrics will raise a parse error.
+- Per-example results can be: `bool` (mapped to 1.0/0.0), `float`, or `(score, feedback)`.
+
+#### Dataset Item Format
+
+Dataset items can follow two conventions:
+
+1. **`(input, expected_output)` tuples**: When the dataset yields two-tuples, the first element is bound to the dataset variable name in the metric, and the second is bound to a special `expected` variable. Use `None` as `expected_output` for analytical metrics where the metric computes correctness internally.
+
+2. **Raw items**: Single values or `dict.items()` key-value pairs are bound directly to the dataset variable name.
+
+````kedi
+@eval: solve_aime:
+  > data: train:
+    = ```
+    return [
+      ("What is 2+2?", {'answer': 4}),
+      ("What is 3*5?", {'answer': 15}),
+    ]
+    ```
+
+  > metric: accuracy(train):
+    = ```
+    # 'train' is bound to the input (first element of tuple)
+    # 'expected' is bound to the expected output (second element)
+    problem = train
+    pred = solve_aime(problem)
+    return 1.0 if int(pred) == expected['answer'] else 0.0
+    ```
+````
+
+## Prompt Optimization Blocks
+
+Mark specific template spans in a procedure for optimization using the `> optimize: name:` directive:
+
+````kedi
+@solve_math_problem(problem: str) -> int:
+  # This template span will be optimized by the optimizer
+  > optimize: parse_problem:
+    Given the math problem: <problem>
+    Parse it and extract: [num1: int] and [num2: int] and [operator: str]
+  
+  # Another span to optimize
+  > optimize: compute_result:
+    Calculate <num1> <operator> <num2>.
+    The answer is: [answer: int]
+  
+  = `answer`
+````
+
+Rules:
+- `> optimize: name:` must be followed by an indented block containing template lines (prompt text with `<variables>`, `<calls>`, and `[outputs]`).
+- Multiple optimize spans can be defined per procedure.
+- Optimization requires:
+  1. A matching `@eval: procedure_name` suite with training data (`> data:`)
+  2. The `--optimize` flag when running evaluations
+  3. An optimizer selected via `--optimizer` (default: `gepa`)
+- The optimizer uses training data to improve prompts iteratively.
+- Test data (if provided) is used to measure generalization after optimization.
 
 ## AI-Generated Procedures
 
-Define procedure signatures with a specification line starting with `>`:
+Define procedure signatures with an explicit `> auto:` block (replaces the old implicit `>` form):
 
 ```kedi
 @summarize(texts: list[str]) -> str:
-  > Takes a list of text documents and produces a concise summary that preserves key information while reducing length by 80%
+  > auto:
+    Takes a list of text documents and produces a concise summary that preserves key information while reducing length by 80%
 ```
 
 The system will:
 1. Generate test cases based on the specification
 2. Implement the procedure iteratively until tests pass
 3. Cache the implementation in `source.cache.kedi`
+
+Unknown `>` directives will raise a directive error. Valid directives are `auto`, `data`, `test_data`, `metric`, and `optimize`.
 
 ## Complete Example with Explanations
 
@@ -558,12 +708,22 @@ def format_result(value):
     assert result.query == "test"
     ```
 
-# Evaluation metric
+# Evaluation with dataset-aware metric
 @eval: search:
-  > metric: relevance:
+  > data: queries:
     = ```
-    result = search("python", 10)
-    return (result.score, None)
+    return [
+      ("python", {"min_results": 3}),
+      ("javascript", {"min_results": 2}),
+    ]
+    ```
+
+  > metric: relevance(queries):
+    = ```
+    query = queries
+    result = search(query, 10)
+    meets_min = len(result.items) >= expected['min_results']
+    return (result.score, f"Found {len(result.items)} items") if meets_min else (0.0, "Too few results")
     ```
 
 # Main execution
