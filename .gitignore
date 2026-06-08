@@ -3,7 +3,6 @@ node_modules/
 .vscode-test/
 *.log
 .DS_Store
-package-lock.json
 yarn.lock
 out/
 dist/
