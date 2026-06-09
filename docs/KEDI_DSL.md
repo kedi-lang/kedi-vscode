@@ -147,16 +147,16 @@ Substitutions read values and insert them into templates using `<...>`:
 
 ```kedi
 # Variable substitution
-The city is <city>
+>> The city is <city>
 
 # Procedure call
-The country is <get_country(Paris)>
+>> The country is <get_country(Paris)>
 
 # Nested calls
-Result: <outer(<inner(x)>)>
+>> Result: <outer(<inner(x)>)>
 
 # Inline Python expression (note the backticks)
-Sum is <`2 + 3`>
+>> Sum is <`2 + 3`>
 ```
 
 ### Outputs (L-values)
@@ -165,16 +165,16 @@ Outputs are placeholders filled by the LLM using `[...]`:
 
 ```kedi
 # Simple output
-The capital of France is [capital].
+>> The capital of France is [capital].
 
 # Typed output
-Top cities: [cities: list[str]]
+>> Top cities: [cities: list[str]]
 
 # Typed output with inline Python type annotation
-Top cities: [cities: `list[str]`]
+>> Top cities: [cities: `list[str]`]
 
 # Multiple outputs on one line
-[first_name] [last_name] lives in [city: str]
+>> [first_name] [last_name] lives in [city: str]
 ```
 
 Output names must be valid identifiers: `^[A-Za-z_][A-Za-z0-9_]*$`

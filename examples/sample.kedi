@@ -14,7 +14,7 @@
 
 @translate_greeting(language: str): #COMMENT
   >> 'Hello' in <language> is [greeting: str] # COMMENT
-  <`print(f"Translating to {language}...")`> # COMMENT
+  `print(f"Translating to {language}...")` # COMMENT
   = <greeting> # COMMENT
 
 ###
