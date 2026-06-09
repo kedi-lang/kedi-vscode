@@ -2,18 +2,18 @@
 # This file demonstrates various Kedi DSL features
 
 @get_country(city):
-  <city> is located in [country: str].
+  >> <city> is located in [country: str].
   = <country>
 
-Some kedi string
+>> Some kedi string
 @get_language(country: str) -> str:
-  The primary language spoken in <country> is [language: str]. # COMMENT
+  >> The primary language spoken in <country> is [language: str]. # COMMENT
   = <language>
 
 ~Person(a:int, b:Car, c)
 
 @translate_greeting(language: str): #COMMENT
-  'Hello' in <language> is [greeting: str] # COMMENT 
+  >> 'Hello' in <language> is [greeting: str] # COMMENT
   <`print(f"Translating to {language}...")`> # COMMENT
   = <greeting> # COMMENT
 
@@ -23,13 +23,12 @@ Some kedi string
   [country: str] = <get_country(<city>)>
   [language: str] = <get_language(<country>)>
   = City: <city>, Country: <country>, Language: <language>
-### 
+###
 
 # COMMENT
 @foo(): # COMMENT
   @bar():
     # COMMENT
-    <> # COMMENT
     = <`'bar'`>
     # COMMENT
   = <`'foo'`> # COMMENT
@@ -49,32 +48,27 @@ Some kedi string
 
 # Procedure with typed list output
 @get_neighbors(country: str):
-  Countries bordering <country> are [neighbors: list[str]]
+  >> Countries bordering <country> are [neighbors: list[str]]
   = <`', '.join(neighbors)`>
 
-# Procedure with multiple outputs
+# Procedure with multiple outputs (one template block)
 @get_city_info(city: str):
-  For <city>, determine:
+  >> For <city>, determine:
   - Population: [population: int]
   - Area in km²: [area: float]
   - Is capital: [is_capital: bool]
   - Famous landmarks: [landmarks: list[str]]
   = City <city> has <population> people in <area> km²
 
-
-
-
 @show_escapes():
+  >> Use \<angle brackets\>, \[square brackets\], \@at symbol, and \= equals
   = Use \<angle brackets\>, \[square brackets\], \@at symbol, and \= equals
-
-
-
 
 # Complex nested calls
 @trip_planner(start_city: str):
   [country] = <get_country(<start_city>)>
   [neighbor] = <get_neighbors(<country>)>
-  Plan a trip from <start_city> to [destination] in <neighbor>.
+  >> Plan a trip from <start_city> to [destination] in <neighbor>.
   [itinerary: list[str]] = ```
   return [
     f"Day 1: Explore {start_city}",
@@ -87,15 +81,13 @@ Some kedi string
 # Assignment at top level
 [global_city: str] = Paris
 
-# Python block at top level 
+# Python block at top level
 ```
 # fdskjnbf
 import math
 radius = 6371  # Earth radius in km
 pi_approx = math.pi
 ```
-
-[x] = dfkjnlkdsfv
 
 # Top-level execution with nested calls
 = <translate_greeting(<get_language(<get_country(Paris)>)>)>

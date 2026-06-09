@@ -6,7 +6,7 @@ Kedi is a lightweight DSL for orchestrating LLM workflows. This extension ships 
 - Procedures with typed parameters, optional return annotations, and colon terminators.
 - Custom type declarations with nested field highlighting.
 - Assignments, return lines, template text, and indentation-delimited blocks.
-- Substitutions, nested calls, output placeholders, and template continuations with trailing backslashes.
+- Substitutions, nested calls, output placeholders, and `>>` template blocks with continuation rows.
 - Inline Python expressions inside templates and arguments, plus escaped delimiter tokens.
 - Multiline Python fences with dedicated scopes for embedded return/assignment blocks.
 - String literals, unquoted template segments, and inline/block comments.

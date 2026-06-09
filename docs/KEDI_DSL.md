@@ -6,10 +6,11 @@ Kedi is a lightweight domain-specific language (DSL) designed to orchestrate LLM
 
 ## Anatomy of a Kedi Template
 
-A Kedi template string combines literal text with input substitutions and output placeholders:
+A Kedi template combines literal text with input substitutions and output placeholders.
+At procedure and top level, templates are opened with `>>` (see **Template Blocks** below).
 
 ```kedi
-The capital of <country> is [capital].
+>> The capital of <country> is [capital].
 ```
 
 Components:
@@ -24,14 +25,13 @@ The capital of France is [capital].
 
 After execution, `[capital]` is filled by the LLM (e.g., "Paris") and the variable `capital` becomes available in scope:
 ```kedi
-The capital of <country> is [capital].
-# Now 'capital' variable contains "Paris" and can be used:
+>> The capital of <country> is [capital].
 <capital> is a beautiful city.
 ```
 
 Multiple inputs and outputs can appear on the same line:
 ```kedi
-<person1> and <person2> live in [city] and work at [company].
+>> <person1> and <person2> live in [city] and work at [company].
 # After execution, both 'city' and 'company' are available as variables
 ```
 
@@ -41,7 +41,7 @@ Multiple inputs and outputs can appear on the same line:
 
 A Kedi program consists of:
 - **Imports and exports**: Explicit module boundaries for sharing procedures, types, and values across `.kedi` files
-- **Template lines**: Free text with embedded substitutions and outputs
+- **Template blocks** (`>>`): LLM prompts with embedded substitutions and outputs
 - **Procedures**: Reusable named blocks of code
 - **Assignments**: Variable initialization and storage
 - **Returns**: Values returned from procedures or top-level
@@ -113,19 +113,37 @@ To export every public name in a module, use `> export: *`:
 
 Public names are names that do not start with `_`. If a module has no export directive, importing it does not expose any names.
 
-### Template Lines
+### Template Blocks (`>>`)
 
-Template lines are the basic building blocks that mix literal text with dynamic content:
+Template prompts are opened with `>>`. Continuation lines at the same indent
+belong to the same block and are **newline-joined into one LLM run**. Outputs
+from earlier rows appear as `[name]` placeholders in the merged prompt; later
+rows may reference them with `<name>` (left as literal text for the model).
 
 ```kedi
-Hello, this is plain text
-The answer is <variable> and result is <compute(5)>
-Please provide [output] for this query
+>> What's the [capital] of Turkey?
+What's the [population: int] of <capital>?
 ```
+
+Inside procedures, multiple blocks are separated by blank lines or a new `>>`:
+
+```kedi
+@do_something():
+  >> Foo bar [baz]
+  Baz foo [bar]
+  Bar baz [foo]
+
+  >> Bar baz [foooo]
+  = <foooo>
+```
+
+Bare template lines (without `>>`) are **deprecated** at procedure and top level and
+should not appear in new code. They remain valid inside `> optimize:` / `> auto:`
+bodies only.
 
 ### Substitutions (R-values)
 
-Substitutions read values and insert them into template lines using `<...>`:
+Substitutions read values and insert them into templates using `<...>`:
 
 ```kedi
 # Variable substitution
@@ -301,13 +319,13 @@ Use `\,` to escape commas within arguments:
 Use backticks within substitutions for single-line Python:
 
 ```kedi
-# In template lines
-Result: <`math.sqrt(16)`>
+# In template blocks
+>> Result: <`math.sqrt(16)`>
 Array: <`[i*2 for i in range(5)]`>
 
-# Variable access
+# Variable access in a return (not an LLM template)
 [x] = 10
-Double: <`x * 2`>
+= Double: <`x * 2`>
 ```
 
 ### Multiline Python Blocks
@@ -457,19 +475,26 @@ Defaulted type fields must be annotated. Required fields must come before defaul
 
 ## Advanced Features
 
-### Multiline Strings
+### Multiline Templates and Returns
 
-Use backslash for line continuation:
+**Templates** use `>>` blocks — not trailing backslashes. Continuation rows at the
+same indent are newline-joined into one LLM run:
+
+```kedi
+>> What's the [capital] of Turkey?
+What's the [population: int] of <capital>?
+```
+
+**Returns** may still use backslash continuation to stitch a single return value
+across physical lines:
 
 ````kedi
 = This is a \
-  long string that \
+  long return that \
   continues across lines
-
-# Results in: "This is a long string that continues across lines"
 ````
 
-Use `\\` for literal backslash.
+Use `\\` for a literal backslash.
 
 ### Lexical Closures
 
@@ -664,10 +689,8 @@ def format_result(value):
 
 # Procedure with typed parameters and return type
 @search(query: str, limit: int) -> SearchResult:
-  Searching for "<query>" with limit <limit>...
-  
-  # LLM output with type annotation
-  [results: list[str]] = List relevant items for query "<query>"
+  >> Searching for "<query>" with limit <limit>...
+  List relevant items for query "<query>" as [results: list[str]]
   
   # Python block for computation (note proper indentation!)
   [score: float] = ```
