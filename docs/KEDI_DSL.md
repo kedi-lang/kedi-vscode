@@ -137,9 +137,8 @@ Inside procedures, multiple blocks are separated by blank lines or a new `>>`:
   = <foooo>
 ```
 
-Bare template lines (without `>>`) are **deprecated** at procedure and top level and
-should not appear in new code. They remain valid inside `> optimize:` / `> auto:`
-bodies only.
+Bare template lines (without `>>`) are a **parse error** at procedure and top level.
+They remain valid only inside `> optimize:` / `> auto:` bodies.
 
 ### Substitutions (R-values)
 
@@ -622,6 +621,78 @@ Dataset items can follow two conventions:
     ```
 ````
 
+## Agent Profiles and Tools
+
+Kedi routes LLM calls through agent adapters. Use `> model:`, `> profile:`, and
+`> use:` to choose models and expose Kedi procedures as agent tools.
+
+### Model and profile directives
+
+```kedi
+> model: groq:qwen/qwen3-32b
+
+> profile: fast:
+    > model: groq:qwen/qwen3-32b
+> profile: quality:
+    > model: openrouter/google/gemini-3-flash-preview
+    > use: web_search
+```
+
+- `> model: name` — set the active model for subsequent procedure captures (plain
+  name or `` `expression` ``).
+- `> profile: name:` — define a reusable profile with nested `> model:` and/or
+  `> use:` members.
+- Profiles merge when applied: later members override earlier ones of the same kind.
+
+### `> use:` semantics
+
+Single-line form:
+
+```kedi
+> use: foo
+```
+
+1. If a procedure named `foo` exists, register it as an **agent tool** for the
+   current indentation block.
+2. Otherwise merge the agent profile named `foo`.
+
+Multiline form always lists tools (never profiles):
+
+```kedi
+> use:
+    web_browse
+    `web_fetch`
+```
+
+Each entry names a Kedi procedure to expose as an agent tool. Backtick entries
+are accepted for symmetry with `> model:`.
+
+### Scoping rules
+
+- Tool registrations apply only inside the indentation block where `> use:` appears.
+- When a procedure exits, the previous tool frame is restored.
+- An inner `> use: bar` overrides an outer `bar` tool for that inner block only.
+- Procedure names take precedence over profile names for single-line `> use:`.
+
+Example:
+
+```kedi
+@bar():
+    = something
+
+> use: bar
+
+@foo():
+    > use: bar
+    >> inner scope uses the inner bar tool
+    = done
+
+>> outer scope still uses the top-level bar procedure as a tool
+```
+
+Agent tools require an adapter that supports tool registration (for example
+Pydantic AI). Adapters without tool support raise a clear error at runtime.
+
 ## Prompt Optimization Blocks
 
 Mark specific template spans in a procedure for optimization using the `> optimize: name:` directive:
@@ -666,7 +737,9 @@ The system will:
 2. Implement the procedure iteratively until tests pass
 3. Cache the implementation in `source.cache.kedi`
 
-Unknown `>` directives will raise a directive error. Valid directives are `auto`, `data`, `test_data`, `metric`, and `optimize`.
+Unknown `>` directives will raise a directive error. Valid directives include
+`auto`, `data`, `test_data`, `metric`, `optimize`, `model`, `profile`, `use`,
+`import`, and `export`.
 
 ## Complete Example with Explanations
 
