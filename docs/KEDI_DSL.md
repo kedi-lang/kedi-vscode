@@ -650,11 +650,14 @@ Single-line form:
 
 ```kedi
 > use: foo
+> use: `web_fetch`
 ```
 
 1. If a procedure named `foo` exists, register it as an **agent tool** for the
    current indentation block.
 2. Otherwise merge the agent profile named `foo`.
+
+Backticks on the single-line form are accepted for symmetry with `> model:`.
 
 Multiline form always lists tools (never profiles):
 
