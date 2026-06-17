@@ -365,7 +365,7 @@ result = math.pi * x  # WRONG: fences not indented
 Rules:
 - Opening/closing fences must be alone on their lines (no inline `` ```python code``` ``)
 - Code must match the surrounding Kedi indentation level
-- Variables in scope are injected and changes reflect back
+- Variables in scope are injected, and reassignments to those **existing** Kedi variables reflect back. New names created inside the block stay local to the block and do **not** leak into Kedi scope — assign to an existing Kedi variable (or use a value-returning block) to surface a result.
 - The code is dedented relative to its indentation level before execution
 
 ### Value-Returning Python Blocks
@@ -623,26 +623,111 @@ Dataset items can follow two conventions:
 
 ## Agent Profiles and Tools
 
-Kedi routes LLM calls through agent adapters. Use `> model:`, `> profile:`, and
-`> use:` to choose models and expose Kedi procedures as agent tools.
+Kedi routes LLM calls through agent adapters. Use `> model:`, `> effort:`,
+`> system:`, `> mcp:`, `> profile:`, and `> use:` to choose models, set
+reasoning effort, set agent instructions, load MCP tools, and expose Kedi
+procedures as agent tools.
 
 ### Model and profile directives
 
 ```kedi
 > model: groq:qwen/qwen3-32b
+> effort: low
+> system: Answer concisely and avoid extra narration.
 
 > profile: fast:
     > model: groq:qwen/qwen3-32b
+    > effort: minimal
+    > settings:
+        temperature: 0.2
+        max_tokens: 1024
+    > system:
+        Prefer short direct answers.
+        Adapt examples for <audience>.
 > profile: quality:
     > model: openrouter/google/gemini-3-flash-preview
+    > effort: high
+    > system: Be precise and cite the relevant tool output.
+    > settings:
+        parallel_tool_calls: true
+        num_retries: 2
+    > mcp:
+        command: vsh
+        args: `["run", "--mcp"]`
     > use: web_search
 ```
 
 - `> model: name` — set the active model for subsequent procedure captures (plain
   name or `` `expression` ``).
-- `> profile: name:` — define a reusable profile with nested `> model:` and/or
-  `> use:` members.
+- `> effort: level` — set active reasoning effort. Accepted values are
+  `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; plain values or
+  `` `expression` `` are allowed. Pydantic AI maps `max` to `xhigh`.
+  DSPy receives the value directly as `reasoning_effort`.
+- `> system: text` — set active agent instructions for subsequent procedure
+  captures and prompt calls.
+- `> settings:` — set active model configuration for subsequent procedure
+  captures and prompt calls. Values are `name: value` lines; plain values are
+  parsed as simple scalars (`true`, `false`, numbers, `null`) and backtick
+  expressions are evaluated as Python for complex values. Kedi keeps the merged
+  settings in the active profile, then filters them at adapter boundaries:
+  Pydantic AI receives only supported `ModelSettings` keys, and DSPy receives
+  only supported `dspy.LM` kwargs. Unknown setting names are parser/LSP errors.
+  Use backticks when the setting value should be a real Python object instead
+  of a string or simple scalar:
+
+  ```kedi
+  > settings:
+      parallel_tool_calls: `False`
+      stop_sequences: `["END", "DONE"]`
+      extra_body: `{"mode": "json"}`
+  ```
+- Multiline `> system:` bodies are newline-joined like `>>` blocks, but they
+  are read-only: literal text, `<name>` substitutions, and inline Python
+  substitutions such as ``<`args.name`>`` are allowed; LLM outputs and procedure
+  calls are not. Use `<``>` when the instruction text needs to mention a
+  literal code fence marker.
+- `> profile: name:` — define a reusable profile with nested `> model:`,
+  `> effort:`, `> system:`, `> settings:`, `> mcp:`, and/or `> use:` members.
+- Profile docstrings: if the first statement inside a profile body is a block
+  comment, its body becomes profile documentation and is shown in editor hovers.
+  A block comment after any other profile statement remains a normal comment.
 - Profiles merge when applied: later members override earlier ones of the same kind.
+
+### `> mcp:` semantics
+
+Use `> mcp:` to load tools from an MCP server for the active agent scope:
+
+```kedi
+> mcp:
+    transport: stdio
+    command: vsh
+    args: `["run", "--mcp"]`
+    env: `{}`
+```
+
+String fields can be plain Kedi strings or inline Python expressions:
+
+```kedi
+> mcp:
+    transport: `os.getenv("MCP_TRANSPORT")`
+    command: `os.getenv("STDIO_COMMAND")`
+    url: https://example.com/mcp
+```
+
+- `transport` must be `stdio`, `sse`, `http`, or `streamable-http`. If omitted
+  and `command` is present, Kedi treats the directive as `stdio`. `http` is an
+  alias for `streamable-http`; both use the same streamable HTTP transport.
+- `stdio` servers require `command`; `args` must evaluate to a list of strings
+  and `env` must evaluate to a string dictionary when present.
+- `http` / `streamable-http` and `sse` servers require `url`; `headers` must
+  evaluate to a string dictionary when present.
+- MCP directives follow the same scoping model as `> model:` and `> system:`:
+  top-level directives are captured by following procedures, profile members
+  are applied when the profile is used, and procedure-body directives affect
+  following prompt calls in that procedure.
+
+DSPy currently uses the stdio MCP path through `dspy.Tool.from_mcp_tool` and
+`ReAct.acall`.
 
 ### `> use:` semantics
 
@@ -741,8 +826,8 @@ The system will:
 3. Cache the implementation in `source.cache.kedi`
 
 Unknown `>` directives will raise a directive error. Valid directives include
-`auto`, `data`, `test_data`, `metric`, `optimize`, `model`, `profile`, `use`,
-`import`, and `export`.
+`auto`, `data`, `test_data`, `metric`, `optimize`, `model`, `effort`, `system`, `mcp`,
+`profile`, `use`, `import`, and `export`.
 
 ## Complete Example with Explanations
 
