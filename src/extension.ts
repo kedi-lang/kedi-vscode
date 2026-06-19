@@ -30,9 +30,14 @@ import {
 } from "vscode-languageclient/node";
 
 import { registerEmbeddedPython, EmbeddedPython } from "./embeddedPython";
+import {
+    registerEmbeddedKediInPython,
+    EmbeddedKediInPython,
+} from "./embeddedKediInPython";
 
 let client: LanguageClient | undefined;
 let embedded: EmbeddedPython | undefined;
+let embeddedKedi: EmbeddedKediInPython | undefined;
 let pythonApi: any | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
 
@@ -50,6 +55,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Build the embedded-Python module first — the LSP middleware
     // closes over its public surface (range fetch + virtual-doc URI).
     embedded = registerEmbeddedPython(context, () => client);
+    embeddedKedi = registerEmbeddedKediInPython(context, () => client);
 
     await startClient(context, embedded);
 
@@ -101,6 +107,8 @@ export async function deactivate(): Promise<void> {
     }
     embedded?.dispose();
     embedded = undefined;
+    embeddedKedi?.dispose();
+    embeddedKedi = undefined;
 }
 
 async function restartClient(context: vscode.ExtensionContext): Promise<void> {
@@ -115,6 +123,7 @@ async function restartClient(context: vscode.ExtensionContext): Promise<void> {
     if (embedded) {
         await startClient(context, embedded);
         embedded.setClientGetter(() => client);
+        embeddedKedi?.setClientGetter(() => client);
     }
 }
 

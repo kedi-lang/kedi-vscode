@@ -25,7 +25,8 @@
   },
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onLanguage:kedi"
+    "onLanguage:kedi",
+    "onLanguage:python"
   ],
   "extensionDependencies": [
     "ms-python.python"
@@ -87,6 +88,16 @@
           "type": "boolean",
           "default": true,
           "description": "Forward Hover / Go-to-Definition / Find References to the Python language server (Pylance/Pyright) when the cursor is inside a fenced ```python``` block or a backtick `python_expr` region."
+        },
+        "kedi.embeddedKediInPython.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Kedi diagnostics, hover, go-to-definition, and references inside Python function docstrings whose first cleaned line is `kedi`."
+        },
+        "kedi.embeddedKediInPython.experimentalSemanticTokens": {
+          "type": "boolean",
+          "default": false,
+          "description": "Experimental: provide Kedi semantic tokens inside Python docstrings. Disabled by default because VS Code does not reliably merge multiple semantic-token providers for Python."
         }
       }
     },
