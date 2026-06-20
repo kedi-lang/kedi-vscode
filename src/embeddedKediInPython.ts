@@ -286,7 +286,7 @@ function isEnabled(): boolean {
 function experimentalSemanticTokensEnabled(): boolean {
     return vscode.workspace
         .getConfiguration("kedi")
-        .get<boolean>("embeddedKediInPython.experimentalSemanticTokens", false);
+        .get<boolean>("embeddedKediInPython.experimentalSemanticTokens", true);
 }
 
 function isPythonDocument(doc: vscode.TextDocument): boolean {

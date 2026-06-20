@@ -96,8 +96,8 @@
         },
         "kedi.embeddedKediInPython.experimentalSemanticTokens": {
           "type": "boolean",
-          "default": false,
-          "description": "Experimental: provide Kedi semantic tokens inside Python docstrings. Disabled by default because VS Code does not reliably merge multiple semantic-token providers for Python."
+          "default": true,
+          "description": "Provide Kedi semantic token highlighting inside Python docstrings whose first cleaned line is `kedi`."
         }
       }
     },
@@ -105,6 +105,19 @@
       {
         "language": "kedi",
         "path": "./snippets/marker.code-snippets"
+      }
+    ],
+    "grammars": [
+      {
+        "scopeName": "source.kedi.embedded.python",
+        "path": "./syntaxes/kedi.embedded-python.tmLanguage.json",
+        "injectTo": [
+          "source.python"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.kedi.python": "kedi",
+          "source.python.embedded.kedi": "python"
+        }
       }
     ],
     "commands": [
