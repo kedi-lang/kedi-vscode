@@ -1,9 +1,9 @@
 /**
  * Kedi VS Code extension — LSP client + embedded-Python forwarding.
  *
- * Highlighting comes entirely from LSP semantic tokens (no TextMate
- * grammar). Hover / Go-to-Def / References / Rename / Outline /
- * Signature Help / Inlay Hints / Formatting are all served by
+ * Kedi document highlighting comes from LSP semantic tokens.
+ * Hover / Go-to-Def / References / Rename / Outline /
+ * Signature Help / Inlay Hints / Formatting are served by
  * `kedi-lsp` (Python, pygls).
  *
  * For positions inside a fenced ```python``` block or an inline
