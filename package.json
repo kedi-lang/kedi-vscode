@@ -107,19 +107,6 @@
         "path": "./snippets/marker.code-snippets"
       }
     ],
-    "grammars": [
-      {
-        "scopeName": "source.kedi.embedded.python",
-        "path": "./syntaxes/kedi.embedded-python.tmLanguage.json",
-        "injectTo": [
-          "source.python"
-        ],
-        "embeddedLanguages": {
-          "meta.embedded.block.kedi.python": "kedi",
-          "source.python.embedded.kedi": "python"
-        }
-      }
-    ],
     "commands": [
       {
         "command": "kedi.restartServer",
