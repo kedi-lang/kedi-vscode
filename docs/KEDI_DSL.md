@@ -26,7 +26,7 @@ The capital of France is [capital].
 After execution, `[capital]` is filled by the LLM (e.g., "Paris") and the variable `capital` becomes available in scope:
 ```kedi
 >> The capital of <country> is [capital].
-<capital> is a beautiful city.
+= <capital> is a beautiful city.
 ```
 
 Multiple inputs and outputs can appear on the same line:
@@ -117,12 +117,13 @@ Public names are names that do not start with `_`. If a module has no export dir
 
 Template prompts are opened with `>>`. Continuation lines at the same indent
 belong to the same block and are **newline-joined into one LLM run**. Outputs
-from earlier rows appear as `[name]` placeholders in the merged prompt; later
-rows may reference them with `<name>` (left as literal text for the model).
+from the block become available only after that single LLM run finishes. A
+continuation row cannot read a field produced earlier in the same block with
+`<name>`; start a new `>>` block if the next prompt needs that value.
 
 ```kedi
 >> What's the [capital] of Turkey?
-What's the [population: int] of <capital>?
+>> What's the [population: int] of <capital>?
 ```
 
 Inside procedures, multiple blocks are separated by blank lines or a new `>>`:
@@ -139,6 +140,26 @@ Inside procedures, multiple blocks are separated by blank lines or a new `>>`:
 
 Bare template lines (without `>>`) are a **parse error** at procedure and top level.
 They remain valid only inside `> optimize:` / `> auto:` bodies.
+
+### Raw Model Invokes (`<<`)
+
+When a `>>` prompt has no output fields, Kedi sends the rendered prompt to the active
+adapter as a raw model invoke and discards the model response:
+
+```kedi
+>> Summarize the project status in one sentence.
+```
+
+To keep the raw model response, put an untyped capture target in front of `<<`:
+
+```kedi
+[answer] << Summarize <topic> in one sentence.
+= <answer>
+```
+
+Raw invoke captures always produce strings. `[answer: str] << ...` is accepted but
+redundant, while any other capture type is an error. Raw invoke prompts cannot contain
+output fields such as `[capital]`; use `>>` when you want structured field filling.
 
 ### Substitutions (R-values)
 
@@ -172,6 +193,9 @@ Outputs are placeholders filled by the LLM using `[...]`:
 # Typed output with inline Python type annotation
 >> Top cities: [cities: `list[str]`]
 
+# Typed output with field description metadata
+>> Capital of Turkey is [capital: Annotated[str, "Canonical city name"]].
+
 # Multiple outputs on one line
 >> [first_name] [last_name] lives in [city: str]
 ```
@@ -179,6 +203,22 @@ Outputs are placeholders filled by the LLM using `[...]`:
 Output names must be valid identifiers: `^[A-Za-z_][A-Za-z0-9_]*$`
 
 Backtick-wrapped type expressions in outputs are evaluated at runtime, giving you access to dynamic types from the prelude or computed values.
+
+`Annotated[type, "description"]` can attach schema descriptions to output fields without
+using inline Python. The description must be a single-line string literal inside the
+`Annotated[...]` arguments; standalone string literals are not valid type annotations.
+Adapters that expose JSON schema, such as Pydantic AI and LangChain, pass this metadata
+as the field description:
+
+```kedi
+>> Extract the customer as [name: Annotated[str, "Full customer name"]].
+```
+
+Use backticks only when the type itself must come from runtime Python state:
+
+```kedi
+>> Extract [value: `output_type`].
+```
 
 ### Variable Assignment
 
@@ -368,6 +408,26 @@ Rules:
 - Variables in scope are injected, and reassignments to those **existing** Kedi variables reflect back. New names created inside the block stay local to the block and do **not** leak into Kedi scope — assign to an existing Kedi variable (or use a value-returning block) to surface a result.
 - The code is dedented relative to its indentation level before execution
 
+#### Kedi variables are Python *globals*
+
+Inside a Python block, Kedi variables are exposed as **module globals**, not locals. This is invisible most of the time — a bare `x` reads the Kedi variable `x` exactly as you'd expect — but it matters in two specific cases:
+
+- **Reflection.** Read names dynamically with the bare name or `globals()["x"]`, **not** `locals()`. A Kedi variable is not a local of the block, so `locals().get("x")` will not find it.
+- **Nested functions and comprehensions.** A `def`/`lambda` nested inside a block that needs to *rebind* a Kedi variable must declare `global x`, **not** `nonlocal x` — there is no enclosing function scope to close over.
+
+````kedi
+@counter():
+  [n: int] = `0`
+  ```
+  def bump():
+      global n        # ✅ rebinds the Kedi variable; `nonlocal n` would be a SyntaxError
+      n = n + 1
+  bump()
+  bump()
+  ```
+  = <`str(n)`>        # "2"
+````
+
 ### Value-Returning Python Blocks
 
 ````kedi
@@ -481,7 +541,14 @@ same indent are newline-joined into one LLM run:
 
 ```kedi
 >> What's the [capital] of Turkey?
-What's the [population: int] of <capital>?
+This same prompt can ask for [population: int] too.
+```
+
+To use an output from the first prompt, start a new block:
+
+```kedi
+>> What's the [capital] of Turkey?
+>> What's the [population: int] of <capital>?
 ```
 
 **Returns** may still use backslash continuation to stitch a single return value
@@ -535,6 +602,34 @@ Notes:
 - Inside `<...>` substitutions and `[...]` outputs, use the same `\` escapes for literal delimiters.
 - A lone `\` before a non-escapable character is an error.
 - **Whitespace preservation**: Regular whitespace (spaces) at the beginning and end of template strings are trimmed, but escaped whitespace characters (`\t`, `\n`, and `\s`) are preserved even at the boundaries. For example, `= \tTab at start\n` will preserve the leading tab and trailing newline.
+
+## Concurrency and Non-Blocking Templates
+
+By default Kedi runs **sequentially**: every template (`>>`) call blocks until the model responds, exactly as before. Concurrency is **opt-in** and requires **no syntax changes** — the same program runs faster when you enable it.
+
+### Enabling parallel execution
+
+Opt in with any one of:
+
+- `KEDI_PARALLEL=1` (environment variable) — `1/true/yes/on` enable it, `0/false/no/off` (or unset) keep sequential, a positive integer sets the worker count. Any other value is rejected loudly rather than silently flipping a mode.
+- `kedi.parallel(max_workers=N)` / `kedi.configure(parallel=True)` in the Python API.
+
+When parallel mode is on, independent template calls run concurrently and dependency chains pipeline automatically: in `A → B` and `C → D`, both chains run at once and each `B`/`D` starts the instant its input is ready. There is no new operator — the interpreter discovers the dataflow from how outputs feed into later inputs.
+
+### How it works (and what you can observe)
+
+Each template output becomes an opaque **promise** until its value is actually needed. The interpreter threads promises through the environment and resolves them lazily — when a Python block reads the value, or at end-of-run. You normally never see a promise.
+
+- **Promises are loud, never silent.** If an unresolved promise ever reaches a value context unexpectedly (it is stringified, indexed, compared, …), it raises `KediPromiseLeak` rather than producing a wrong result. This indicates an interpreter bug, not user error.
+- **Advanced: passing promises around.** Reading a Kedi variable by **bare name** (or `globals()["x"]`) inside a Python block resolves the promise to its concrete value. The non-resolving dict APIs — `globals().get("x")`, `.items()`, `.values()`, `dict(globals())` — intentionally return the **raw promise** so you can forward a still-pending value without forcing it. To collapse a raw promise to its value yourself, call `kedi.force(x)` (a no-op on non-promises). This laziness is deliberate; resolving on every dict access would defeat pipelining.
+
+### Things to know
+
+- **Sequential and parallel results are identical.** The value-environment is snapshotted by value when a template is scheduled, so a later write on the main thread can't change what an already-scheduled job sees. If you ever observe a difference, report it — it's a bug, not a tuning knob.
+- **Failures are never swallowed.** Even unconsumed templates run, and any failure surfaces at end-of-run (the first error is raised; additional concurrent failures are logged). A procedure that raises still drains its scheduled jobs before the error propagates.
+- **Adapters must be thread-safe.** In parallel mode an adapter's `produce_sync` is called concurrently across worker threads. A custom adapter must be safe under concurrent calls (or serialize internally). The built-in adapters already are.
+- **`max_workers` is process-global per size.** The thread pool is shared across runs and cached by worker count; the first `parallel(max_workers=N)` for a given `N` creates that pool and subsequent requests for the same `N` reuse it.
+- **Adaptive job manager (opt-in, advanced).** `JobManagerEngine` layers AIMD concurrency, transient-error retry with backoff + jitter, and a circuit breaker on top of the thread engine for real rate-limited backends. It is not wired through the public `parallel()` surface yet — construct it explicitly via `compile_program(engine=...)` if you need it.
 
 ## Testing and Evaluation
 
@@ -623,19 +718,21 @@ Dataset items can follow two conventions:
 
 ## Agent Profiles and Tools
 
-Kedi routes LLM calls through agent adapters. Use `> model:`, `> effort:`,
-`> system:`, `> mcp:`, `> profile:`, and `> use:` to choose models, set
-reasoning effort, set agent instructions, load MCP tools, and expose Kedi
-procedures as agent tools.
+Kedi routes LLM calls through agent adapters. Use `> adapter:`, `> agent:`,
+`> model:`, `> effort:`, `> system:`, `> mcp:`, `> profile:`, and `> use:`
+to choose adapter implementations, choose models, set reasoning effort, set
+agent instructions, load MCP tools, and expose Kedi procedures as agent tools.
 
 ### Model and profile directives
 
 ```kedi
+> adapter: pydantic
 > model: groq:qwen/qwen3-32b
 > effort: low
 > system: Answer concisely and avoid extra narration.
 
 > profile: fast:
+    > adapter: pydantic
     > model: groq:qwen/qwen3-32b
     > effort: minimal
     > settings:
@@ -645,6 +742,7 @@ procedures as agent tools.
         Prefer short direct answers.
         Adapt examples for <audience>.
 > profile: quality:
+    > agent: codex
     > model: openrouter/google/gemini-3-flash-preview
     > effort: high
     > system: Be precise and cite the relevant tool output.
@@ -655,8 +753,18 @@ procedures as agent tools.
         command: vsh
         args: `["run", "--mcp"]`
     > use: web_search
+> profile: acp_local:
+    > agent: acp
+    > settings:
+        command: `["vsh", "run", "--acp"]`
 ```
 
+- `> adapter: name` — select an agent framework adapter for following LLM
+  calls in the current lexical scope. Built-in framework shortnames are
+  `pydantic`, `dspy`, and `langchain`.
+- `> agent: name` — select an agent harness adapter for following LLM calls
+  in the current lexical scope. Built-in harness shortnames are `claude`,
+  `codex`, and `acp`.
 - `> model: name` — set the active model for subsequent procedure captures (plain
   name or `` `expression` ``).
 - `> effort: level` — set active reasoning effort. Accepted values are
@@ -671,7 +779,8 @@ procedures as agent tools.
   expressions are evaluated as Python for complex values. Kedi keeps the merged
   settings in the active profile, then filters them at adapter boundaries:
   Pydantic AI receives only supported `ModelSettings` keys, and DSPy receives
-  only supported `dspy.LM` kwargs. Unknown setting names are parser/LSP errors.
+  only supported `dspy.LM` kwargs. ACP receives harness process settings such as
+  `command`, `cwd`, `env`, and `timeout`. Unknown setting names are parser/LSP errors.
   Use backticks when the setting value should be a real Python object instead
   of a string or simple scalar:
 
@@ -681,17 +790,41 @@ procedures as agent tools.
       stop_sequences: `["END", "DONE"]`
       extra_body: `{"mode": "json"}`
   ```
+  For ACP harnesses, `command` may also come from CLI/env:
+
+  ```kedi
+  > agent: acp
+
+  > settings:
+      command: `["vsh", "run", "--acp"]`
+  ```
+
+  If `command` is omitted, Kedi reads `KEDI_ACP_AGENT_COMMAND`; the CLI
+  `--acp-command` option writes the same setting for the process.
 - Multiline `> system:` bodies are newline-joined like `>>` blocks, but they
   are read-only: literal text, `<name>` substitutions, and inline Python
   substitutions such as ``<`args.name`>`` are allowed; LLM outputs and procedure
   calls are not. Use `<``>` when the instruction text needs to mention a
   literal code fence marker.
-- `> profile: name:` — define a reusable profile with nested `> model:`,
-  `> effort:`, `> system:`, `> settings:`, `> mcp:`, and/or `> use:` members.
+- `> profile: name:` — define a reusable profile with nested `> agent:`,
+  `> adapter:`, `> model:`, `> effort:`, `> system:`, `> settings:`, `> mcp:`,
+  and/or `> use:` members.
 - Profile docstrings: if the first statement inside a profile body is a block
   comment, its body becomes profile documentation and is shown in editor hovers.
   A block comment after any other profile statement remains a normal comment.
 - Profiles merge when applied: later members override earlier ones of the same kind.
+- Adapter selection follows normal lexical scoping. A direct source directive in
+  the current scope overrides an active profile, which overrides CLI defaults.
+  Nested scopes may switch adapters, but a single lexical scope cannot mix
+  `> agent:` and `> adapter:` because those select different adapter classes.
+  Use `> agent:` only for `agent-harness` adapters and `> adapter:` only for
+  `agent-framework` adapters.
+- Editor diagnostics use adapter capability metadata. If the selected adapter
+  does not currently support structured template outputs, `> use:` tool
+  registration, or `> mcp:` servers, the LSP reports warnings on the relevant
+  output field, tool name, or directive keyword. These are capability warnings:
+  when an adapter later advertises support for that feature, the same Kedi code
+  stops warning without syntax changes.
 
 ### `> mcp:` semantics
 
@@ -779,7 +912,191 @@ Example:
 ```
 
 Agent tools require an adapter that supports tool registration (for example
-Pydantic AI). Adapters without tool support raise a clear error at runtime.
+Pydantic AI). Adapters without tool support surface capability warnings in the
+LSP; harness adapters that cannot accept external tools may ignore registrations
+until their underlying protocol gains tool support.
+
+## Python API
+
+Kedi can be embedded in Python without creating a separate CLI entrypoint. The
+Python API keeps the same DSL semantics: templates, `> use:`, profiles,
+settings, typed outputs, Python substitutions, and custom Kedi types still work.
+
+### `@kedi.query`
+
+Decorate a Python function whose docstring starts with a standalone `kedi`
+header. Function arguments become runtime globals for the Kedi program.
+
+```python
+import kedi
+
+
+@kedi.type
+class Review:
+    decision: str
+    summary: str
+
+
+@kedi.query(cache=True, settings={"temperature": 0.2})
+def review_snippet(language: str, code: str) -> Review:
+    """kedi
+    >> Review this <language> snippet.
+    Return [review: Review].
+    = `review`
+    """
+    ...
+```
+
+Rules:
+- The Python function body is not executed; it exists for signature, type, and
+  docstring metadata.
+- Use backtick returns for native typed values. ``= `review` `` returns the
+  `Review` object; ``= <review>`` stringifies it.
+- Function parameters, defaults, configured `env`, registered tools, and
+  auto-injected `@kedi.type` classes are available to inline Python
+  substitutions such as ``[output: `output_type`]``.
+- `cache=True` enables response caching for identical source, arguments, and
+  env. Parse caching is always keyed by the exact source hash.
+
+Dynamic output types can be passed as normal Python values:
+
+```python
+from typing import TypeVar
+
+T = TypeVar("T")
+
+
+@kedi.query
+def extract_output(*, text: str, output_type: type[T]) -> T:
+    """kedi
+    >> Extract [output: `output_type`] from <text>.
+    = `output`
+    """
+    ...
+```
+
+### `@kedi.bind`
+
+Use `bind` when the Kedi implementation should live in a `.kedi` file while
+Python owns the call signature.
+
+```python
+@kedi.bind(file="summarize.kedi", cache=True, reload=True)
+def summarize(topic: str) -> str:
+    ...
+```
+
+`summarize.kedi`:
+
+```kedi
+>> Summarize <topic> for <audience>.
+Return [summary].
+
+= <summary>
+```
+
+The Python body is only a stub; the `.kedi` file is the implementation.
+
+Rules:
+- Relative files resolve from the Python source file that defines the bound
+  function.
+- The bound function body is ignored.
+- `reload=True` rereads and reparses the file on each call when the source hash
+  changes. Without `reload=True`, the file is read when the decorator runs.
+- `bind` accepts the same profile override parameters as `query`: `system`,
+  `effort`, `settings`, `tools`, `env`, `mcp_servers`, and `cache`.
+
+### Configuration and Context
+
+Configure defaults once:
+
+```python
+kedi.configure(
+    model="openrouter:google/gemini-3-flash-preview",
+    adapter="pydantic",
+    system="Use tools when they are relevant.",
+    effort="low",
+    settings={"temperature": 0.2},
+    tools=[search_docs],
+    env={"audience": "maintainers"},
+)
+```
+
+If `model` or `adapter` are not passed explicitly, `configure()` reads
+`KEDI_ADAPTER_MODEL` and `KEDI_ADAPTER` from the environment after loading
+`.env`. `kedi.context(...)` temporarily merges the same options and restores
+the previous configuration when the block exits. It supports both sync and async
+context managers.
+
+Runtime env precedence is:
+1. configured tools and query/bind-local tools
+2. Python call arguments
+3. auto-injected `@kedi.type` classes
+4. `kedi.configure(env=...)`
+5. `kedi.context(env=...)` or query/bind `env=...`
+
+Later entries override earlier entries. This lets explicit env values override
+call arguments when you intentionally want to force a runtime type or value.
+
+### Types and Tools
+
+`@kedi.type` registers Python classes for Kedi type resolution:
+
+```python
+@kedi.type
+class Person:
+    name: str
+    age: int
+
+
+@kedi.type(inject=False)
+class InternalPayload(BaseModel):
+    raw: str
+```
+
+- Existing Pydantic models, Pydantic dataclasses, and standard dataclasses are
+  registered as-is.
+- Bare classes are converted with `dataclasses.dataclass` and then registered.
+- `inject=True` is the default and makes the class available to Kedi programs
+  in the same Python module. Use `inject=False` and pass `env={"Name": Type}`
+  when you want explicit control.
+
+`@kedi.tool` wraps Python callables for adapter tool registration. The callable
+signature and docstring are used for schema and description metadata.
+
+```python
+@kedi.tool(name="search_docs", description="Search local project notes.", retries=1)
+def search_docs(query: str) -> str:
+    return "..."
+```
+
+Register tools through `kedi.configure(tools=[...])`, `kedi.context(tools=[...])`,
+or per-callable `@kedi.query(tools=[...])` / `@kedi.bind(tools=[...])`. A Kedi
+program still uses `> use: search_docs` to expose that registered callable to
+the active prompt.
+
+### Cache Helpers
+
+```python
+info = kedi.cache_info()
+kedi.clear_cache()
+```
+
+`cache_info()` returns the number of parse and response cache entries.
+`clear_cache()` clears both memory caches. Response caching is opt-in with
+`cache=True`; parse caching is always source-hash based.
+
+## Command-Line Parse Helpers
+
+Use `-c` to run Kedi source from the command line and `-p` / `--parse` to parse
+without compiling or executing:
+
+```bash
+kedi -c "= done"
+kedi -p -c "@broken("
+kedi parse program.kedi
+kedi program.kedi --parse
+```
 
 ## Prompt Optimization Blocks
 
