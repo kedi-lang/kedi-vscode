@@ -50,6 +50,10 @@ export function registerEmbeddedKediInPython(
     const diagnostics = vscode.languages.createDiagnosticCollection(
         "kedi-python-docstrings"
     );
+    const diagnosticRefreshTimers = new Map<
+        string,
+        ReturnType<typeof setTimeout>
+    >();
     let semanticProvider: vscode.Disposable | undefined;
 
     context.subscriptions.push(diagnostics);
@@ -62,10 +66,11 @@ export function registerEmbeddedKediInPython(
         }),
         vscode.workspace.onDidChangeTextDocument((event) => {
             if (isPythonDocument(event.document)) {
-                void refreshDiagnostics(event.document);
+                scheduleDiagnosticsRefresh(event.document);
             }
         }),
         vscode.workspace.onDidCloseTextDocument((doc) => {
+            clearDiagnosticRefresh(doc.uri);
             diagnostics.delete(doc.uri);
         }),
         vscode.workspace.onDidChangeConfiguration((event) => {
@@ -155,13 +160,41 @@ export function registerEmbeddedKediInPython(
             }
         },
         dispose() {
+            for (const timer of diagnosticRefreshTimers.values()) {
+                clearTimeout(timer);
+            }
+            diagnosticRefreshTimers.clear();
             diagnostics.clear();
             semanticProvider?.dispose();
             semanticProvider = undefined;
         },
     };
 
-    async function refreshDiagnostics(doc: vscode.TextDocument): Promise<void> {
+    function scheduleDiagnosticsRefresh(doc: vscode.TextDocument): void {
+        clearDiagnosticRefresh(doc.uri);
+        const version = doc.version;
+        diagnosticRefreshTimers.set(
+            doc.uri.toString(),
+            setTimeout(() => {
+                diagnosticRefreshTimers.delete(doc.uri.toString());
+                void refreshDiagnostics(doc, version);
+            }, 125)
+        );
+    }
+
+    function clearDiagnosticRefresh(uri: vscode.Uri): void {
+        const key = uri.toString();
+        const timer = diagnosticRefreshTimers.get(key);
+        if (timer !== undefined) {
+            clearTimeout(timer);
+            diagnosticRefreshTimers.delete(key);
+        }
+    }
+
+    async function refreshDiagnostics(
+        doc: vscode.TextDocument,
+        expectedVersion = doc.version
+    ): Promise<void> {
         if (!isEnabled()) {
             diagnostics.delete(doc.uri);
             return;
@@ -170,6 +203,14 @@ export function registerEmbeddedKediInPython(
             "kedi/kediDocstringDiagnostics",
             doc
         );
+        const currentDocument = vscode.workspace.textDocuments.some(
+            (candidate) =>
+                candidate.uri.toString() === doc.uri.toString() &&
+                candidate.version === expectedVersion
+        );
+        if (!currentDocument) {
+            return;
+        }
         const items = (response?.diagnostics ?? []).map((diagnostic) => {
             const item = new vscode.Diagnostic(
                 toRange(diagnostic.range),
