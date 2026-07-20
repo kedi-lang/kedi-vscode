@@ -1055,9 +1055,12 @@ Rules:
 - `model=`, `adapter=`, and `agent=` override the configured backend only for
   that callable. Use `adapter=` for frameworks (`pydantic`, `dspy`,
   `langchain`) and `agent=` for harnesses (`claude`, `codex`, `acp`).
-- `approval=` accepts `"allow"`, `"deny"`, an `ApprovalPolicy`, or a callable
-  decorated with `@kedi.approval`. `query` and `bind` apply it only to that
-  callable's registered tools.
+- `approval=` accepts `"allow"`, `"deny"`, an `ApprovalPolicy`, or a callable.
+  `query` and `bind` apply it only to that callable's registered tools.
+- `@kedi.approval` registers a callable as the current Python API's default
+  dynamic policy, equivalent to configuring that handler for subsequent calls.
+  An explicit `approval=` on `query`, `bind`, or `kedi.context(...)` takes
+  precedence in that scope.
 
 Dynamic output types can be passed as normal Python values:
 
@@ -1146,7 +1149,8 @@ temporarily merges the same options and restores the previous configuration
 when the block exits. It supports both sync and async context managers.
 
 For a dynamic policy, decorate a Python handler and return one explicit
-decision. Kedi passes an immutable request; only `edit` may replace arguments:
+decision. The decorator registers it as the default policy. Kedi passes an
+immutable request; only `edit` may replace arguments:
 
 ```python
 import kedi
