@@ -184,7 +184,14 @@ Substitutions read values and insert them into templates using `<...>`:
 
 # Inline Python expression (note the backticks)
 >> Sum is <`2 + 3`>
+
+# Bare inline Python segments are also valid in templates
+>> Review this code `"def add(a: int, b: int) -> int: return a + b"`.
 ```
+
+Inside a template, both `<`...`>` and bare `` `...` `` evaluate Python and insert
+its string value. Bare backticks are useful when the expression contains characters
+such as `>` or `[]` that would otherwise need escaping in literal template text.
 
 ### Outputs (L-values)
 
@@ -752,7 +759,8 @@ Dataset items can follow two conventions:
 Kedi routes LLM calls through agent adapters. Use `> adapter:`, `> agent:`,
 `> model:`, `> effort:`, `> approval:`, `> system:`, `> mcp:`, `> profile:`, and `> use:`
 to choose adapter implementations, choose models, set reasoning effort, set
-agent instructions, load MCP tools, and expose Kedi procedures as agent tools.
+agent instructions, load MCP tools, expose Kedi procedures as agent tools, and
+opt into project-local skills.
 
 ### Model and profile directives
 
@@ -952,6 +960,7 @@ Single-line form:
 1. If a procedure named `foo` exists, register it as an **agent tool** for the
    current indentation block.
 2. Otherwise merge the agent profile named `foo`.
+3. `> use: skills` enables the project-local skill tools described below.
 
 Backticks on the single-line form are accepted for symmetry with `> model:`.
 
@@ -965,6 +974,37 @@ Multiline form always lists tools (never profiles):
 
 Each entry names a Kedi procedure to expose as an agent tool. Backtick entries
 are accepted for symmetry with `> model:`.
+
+### One-file skills
+
+Skills are opt-in, project-local instructions stored as one plain file per
+skill:
+
+```text
+.agents/skills/<skill-name>/SKILL.md
+```
+
+Enable them in an agent scope or profile with the single-line form:
+
+```kedi
+> use: skills
+```
+
+This registers two read-only agent tools:
+
+- `list_skills(all: bool = false, limit: int = 20)` returns available skill
+  identifiers in deterministic order.
+- `read_skill(skill_name: str)` returns the exact UTF-8 `SKILL.md` content for
+  one listed identifier.
+
+Skill instructions are never inserted into the model context automatically.
+The agent must first list relevant skills, then explicitly read the one it
+needs. Skill names are limited to one directory name; path traversal, absolute
+paths, symlink escapes, and oversized files are rejected. `all` is reserved for
+future source selection and currently reads the same project-local directory.
+
+`> use: skills` works inside a profile too. The multiline `> use:` form remains
+a procedure-tool list, so it does not enable skills.
 
 ### Scoping rules
 
@@ -1057,6 +1097,9 @@ Rules:
   `langchain`) and `agent=` for harnesses (`claude`, `codex`, `acp`).
 - `approval=` accepts `"allow"`, `"deny"`, an `ApprovalPolicy`, or a callable.
   `query` and `bind` apply it only to that callable's registered tools.
+- `skills=True` on `kedi.configure`, `kedi.context`, `@kedi.query`, or
+  `@kedi.bind` enables the same explicit `list_skills` / `read_skill` tools as
+  `> use: skills`.
 - `@kedi.approval` registers a callable as the current Python API's default
   dynamic policy, equivalent to configuring that handler for subsequent calls.
   An explicit `approval=` on `query`, `bind`, or `kedi.context(...)` takes
@@ -1124,6 +1167,7 @@ kedi.configure(
     settings={"temperature": 0.2},
     tools=[search_docs],
     approval="allow",
+    skills=True,
     env={"audience": "maintainers"},
 )
 ```
