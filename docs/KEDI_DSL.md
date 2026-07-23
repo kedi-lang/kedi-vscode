@@ -894,7 +894,8 @@ opt into project-local skills.
   literal code fence marker.
 - `> profile: name:` — define a reusable profile with nested `> agent:`,
   `> adapter:`, `> model:`, `> effort:`, `> approval:`, `> system:`,
-  `> settings:`, `> mcp:`, and/or `> use:` members.
+  `> settings:`, `> mcp:`, `> subagent:`, and/or `> use:` members.
+  A profile that delegates may also set `> max_agents: N`.
 - Profile docstrings: if the first statement inside a profile body is a block
   comment, its body becomes profile documentation and is shown in editor hovers.
   A block comment after any other profile statement remains a normal comment.
@@ -911,6 +912,81 @@ opt into project-local skills.
   runs. `> use:` tool registration and `> mcp:` servers remain capability
   warnings: when an adapter later advertises support for that feature, the same
   Kedi code stops warning without syntax changes.
+
+### Subagents
+
+The subagent surface is available with the Pydantic AI, Claude Agent SDK,
+Codex App Server, LangChain, and DSPy adapters. A profile may expose other
+profiles as direct children:
+
+```kedi
+> profile: researcher:
+    ###
+    Investigates one focused question and reports its findings.
+    ###
+    > adapter: pydantic
+    > model: openrouter:google/gemini-3-flash-preview
+    > system: Inspect the evidence before answering.
+    > use: web_search
+
+> profile: coordinator:
+    > adapter: pydantic
+    > subagent: researcher
+    > max_agents: 5
+
+> use: coordinator
+[answer] << Delegate the research task, inspect its result, and answer briefly.
+= <answer>
+```
+
+`> subagent: researcher` registers a `delegate_task` tool for `coordinator`.
+The parent may delegate only to profiles named directly in its own body.
+Forward references are supported, while unknown profiles and cyclic profile
+graphs are rejected.
+
+`> max_agents: N` limits how many descendant subagent invocations one
+invocation of that profile may start. Repeated calls to the same child count
+separately, failed or cancelled calls still consume budget, and rejected calls
+do not. Nested descendants consume both their immediate parent's budget and
+every active ancestor budget. Kedi also applies a hard runtime ceiling of 100
+descendant starts per profile invocation.
+
+Each delegation starts a fresh child invocation. The child uses its own model,
+system instructions, tools, MCP servers, skills, and approval policy; parent
+tools and local variables do not leak into it. The parent must include all
+required context in the delegated `task`.
+
+The generated tool accepts:
+
+- `subagent`: one of the direct child profile names,
+- `task`: a self-contained instruction,
+- `final_schema`: an optional JSON Schema for a validated structured result.
+- `background`: when supported by the active adapter, start the child without
+  blocking and return a run handle.
+
+Without `final_schema`, the child runs through the raw text `invoke` seam.
+With a schema, Kedi asks for a short `task_summary` plus the schema-conforming
+result and validates the response again before returning it. The tool result
+always includes `run_id`, `subagent`, `task_summary`, and `final_result`.
+
+Pydantic AI, Claude, Codex, and LangChain profiles also expose
+`wait_subagent`, `cancel_subagent`, and `subagent_status`. A background child
+must be observed with `wait_subagent` before the parent returns; fail-closed
+profiles reject unobserved work. Runtime timeouts start when the child starts,
+not when it is first waited. Completed results may be waited more than once,
+and cancellation is idempotent.
+
+Background handles are process-local and runtime-owned. They do not survive a
+process restart, and old terminal handles may expire after bounded retention.
+DSPy keeps blocking `delegate_task` only because its synchronous tool bridge
+does not guarantee that later lifecycle calls use the same event loop.
+Stateful conversation follow-up is not part of this lifecycle API.
+
+Adapters without child-execution support reject subagent delegation through
+capability validation instead of silently ignoring it. Child execution uses
+the same Kedi contract across supported adapters: isolated profile state,
+scoped tools and approvals, generic usage limits, raw `invoke` output, and
+schema-validated structured output.
 
 ### `> mcp:` semantics
 
