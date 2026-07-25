@@ -107,6 +107,22 @@ In `profiles.kedi`:
 
 Imports resolve relative to the importing file. If no sibling module exists, Kedi falls back to bundled internal modules such as `> import: this`. Only names listed under `> export:` are visible to importers; non-exported procedures, types, and top-level values stay private to the module.
 
+Use `/` to import a module from a nested directory:
+
+```kedi
+> import: services/profiles
+```
+
+To import only part of a module's exported surface, list the required names in an indented body:
+
+```kedi
+> import: services/profiles:
+  Profile
+  get_profile
+```
+
+Selective imports do not create a namespace object; the selected names enter the current environment directly. Imports are applied in source order, so when multiple imports provide the same name, the last imported binding wins. Imports inside nested modules remain relative to the file containing that import.
+
 To export every public name in a module, use `> export: *`:
 
 ```kedi
@@ -827,9 +843,14 @@ opt into project-local skills.
   DSPy receives the value directly as `reasoning_effort`.
 - `> approval: allow` / `> approval: deny` — configure tool-call approval for
   subsequent agent calls in the current scope. `allow` permits registered
-  mutating tools; `deny` refuses them. Without an explicit policy, Kedi allows
-  read-only tools automatically and refuses mutating or sensitive tools.
-  A dynamic Python handler can inspect and allow, deny, or edit a call:
+  mutating or sensitive tools; `deny` refuses them. In the Python API, omitting
+  a policy
+  allows read-only tools automatically and refuses mutating or sensitive tools.
+  The `kedi` CLI instead asks interactively for every mutating or sensitive
+  call, offering **Allow once**, **Deny**, and **Allow always for this run**.
+  The last option is scoped to the current CLI process and the same tool/risk
+  level; it is never persisted. A dynamic Python handler can inspect and
+  allow, deny, or edit a call:
 
   ````kedi
   ```
@@ -951,10 +972,10 @@ do not. Nested descendants consume both their immediate parent's budget and
 every active ancestor budget. Kedi also applies a hard runtime ceiling of 100
 descendant starts per profile invocation.
 
-Each delegation starts a fresh child invocation. The child uses its own model,
-system instructions, tools, MCP servers, skills, and approval policy; parent
-tools and local variables do not leak into it. The parent must include all
-required context in the delegated `task`.
+Each `delegate_task` call starts a fresh child conversation. The child uses its
+own model, system instructions, tools, MCP servers, skills, and approval
+policy; parent tools and local variables do not leak into it. The parent must
+include all required context in the delegated `task`.
 
 The generated tool accepts:
 
@@ -969,6 +990,14 @@ With a schema, Kedi asks for a short `task_summary` plus the schema-conforming
 result and validates the response again before returning it. The tool result
 always includes `run_id`, `subagent`, `task_summary`, and `final_result`.
 
+Every subagent-capable adapter also exposes `continue_subagent`. It accepts a
+completed `run_id`, a new `task`, and an optional `final_schema`, then creates
+a new run in the same bounded child conversation. Only the latest completed
+run may be continued, the calling profile must own that conversation, and one
+conversation may contain at most eight completed turns. Native adapter resume
+state is used when available; otherwise Kedi supplies the child with bounded,
+verified prior results.
+
 Pydantic AI, Claude, Codex, and LangChain profiles also expose
 `wait_subagent`, `cancel_subagent`, and `subagent_status`. A background child
 must be observed with `wait_subagent` before the parent returns; fail-closed
@@ -976,11 +1005,19 @@ profiles reject unobserved work. Runtime timeouts start when the child starts,
 not when it is first waited. Completed results may be waited more than once,
 and cancellation is idempotent.
 
-Background handles are process-local and runtime-owned. They do not survive a
-process restart, and old terminal handles may expire after bounded retention.
+Live background tasks are process-local and runtime-owned. Old terminal
+handles may expire after bounded retention.
 DSPy keeps blocking `delegate_task` only because its synchronous tool bridge
 does not guarantee that later lifecycle calls use the same event loop.
-Stateful conversation follow-up is not part of this lifecycle API.
+
+Python callers may opt into restart persistence with
+`compile_program(..., subagent_state_path=...)` or
+`KediRuntime(..., subagent_state_path=...)`. Kedi stores terminal run records,
+validated results, bounded conversation turns, and serializable native resume
+state in a versioned owner-only JSON file. Completed results and continuations
+then survive a process restart. A run that was still pending or running when
+the process stopped is restored as failed with `InterruptedError`; Kedi does
+not claim to resume an in-flight provider request.
 
 Adapters without child-execution support reject subagent delegation through
 capability validation instead of silently ignoring it. Child execution uses
