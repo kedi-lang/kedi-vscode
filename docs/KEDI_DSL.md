@@ -138,21 +138,6 @@ Public names are names that do not start with `_`. If a module has no export dir
 
 ### Packages
 
-A distributable Kedi package is declared by a `package.kedi` file at its root:
-
-```kedi
-> package: kedi_http:
-  author: Mert Sirakaya
-  contact: mert@kedi-lang.org
-  version: 1.0
-  source: src/kedi_http
-  python: python@3.11-3.14
-  license: Apache-2.0
-  python_dependencies:
-    httpx>=0.27
-    pydantic>=2.0
-```
-
 `source` is relative to `package.kedi` and must contain `main.kedi`. From the package root, run `kedi install` (or `kedi install path/to/package.kedi`) to copy the manifest and that source tree into `$HOME/.kedi/registry/<package-name>`. Imports resolve the package root to `main.kedi`, so `> import: kedi_http` loads `src/kedi_http/main.kedi`; `> import: kedi_http/client` loads `src/kedi_http/client.kedi`.
 
 The `python` field accepts only a fixed version (`python@3.11`) or an inclusive closed range (`python@3.11-3.14`). `python_dependencies` records PEP 508 dependency strings for package tooling; `kedi install` does not install them into the active Python environment.
