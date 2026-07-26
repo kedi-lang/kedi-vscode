@@ -105,7 +105,7 @@ In `profiles.kedi`:
   profile_id
 ```
 
-Imports resolve relative to the importing file. If no sibling module exists, Kedi falls back to bundled internal modules such as `> import: this`. Only names listed under `> export:` are visible to importers; non-exported procedures, types, and top-level values stay private to the module.
+Imports resolve relative to the importing file. If no sibling module exists, Kedi falls back to bundled internal modules such as `> import: this`, then packages installed in the local Kedi registry. Only names listed under `> export:` are visible to importers; non-exported procedures, types, and top-level values stay private to the module.
 
 Use `/` to import a module from a nested directory:
 
@@ -135,6 +135,37 @@ To export every public name in a module, use `> export: *`:
 ```
 
 Public names are names that do not start with `_`. If a module has no export directive, importing it does not expose any names.
+
+### Packages
+
+A distributable Kedi package is declared by a `package.kedi` file at its root:
+
+```kedi
+> package: kedi_http:
+  author: Mert Sirakaya
+  contact: mert@kedi-lang.org
+  version: 1.0
+  source: src/kedi_http
+  python: python@3.11-3.14
+  license: Apache-2.0
+  python_dependencies:
+    httpx>=0.27
+    pydantic>=2.0
+```
+
+`source` is relative to `package.kedi` and must contain `main.kedi`. From the package root, run `kedi install` (or `kedi install path/to/package.kedi`) to copy the manifest and that source tree into `$HOME/.kedi/registry/<package-name>`. Imports resolve the package root to `main.kedi`, so `> import: kedi_http` loads `src/kedi_http/main.kedi`; `> import: kedi_http/client` loads `src/kedi_http/client.kedi`.
+
+The `python` field accepts only a fixed version (`python@3.11`) or an inclusive closed range (`python@3.11-3.14`). `python_dependencies` records PEP 508 dependency strings for package tooling; `kedi install` does not install them into the active Python environment.
+
+`kedi add <package-name>` uses the future `registry.kedi-lang.org/v1/package/<package-name>` registry contract. Until that service exists, set `KEDI_REGISTRY_MOCK_ROOT` to a directory containing package source directories and the same install path is used.
+
+To install an explicit GitHub source locally without involving the registry, pass a `git+https` URL:
+
+```sh
+kedi add git+https://github.com/user/project.git
+```
+
+Kedi shallow-clones the repository, requires `package.kedi` at its root, installs the declared source tree, and prints the checked-out commit. This is intentionally separate from package-registry resolution: when the public registry is available, its response will identify the registry-verified commit for each package rather than treating every Git release as a package release.
 
 ### Template Blocks (`>>`)
 
