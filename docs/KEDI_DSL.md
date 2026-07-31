@@ -121,7 +121,10 @@ To import only part of a module's exported surface, list the required names in a
   get_profile
 ```
 
-Selective imports do not create a namespace object; the selected names enter the current environment directly. Imports are applied in source order, so when multiple imports provide the same name, the last imported binding wins. Imports inside nested modules remain relative to the file containing that import.
+Selective imports do not create a namespace object; the selected names enter the current environment directly. Imports and top-level declarations share source-order write semantics, so the last declaration or import that provides a name wins. A module is initialized at most once per root program compilation; its already-loaded exported bindings are then published at each import directive's source position. Imports inside nested modules remain relative to the file containing that import.
+
+Each name in one selective-import list must be unique. Repeating a name is a parse error rather
+than an ambiguous duplicate binding.
 
 To export every public name in a module, use `> export: *`:
 
@@ -142,7 +145,7 @@ Public names are names that do not start with `_`. If a module has no export dir
 
 The `python` field accepts only a fixed version (`python@3.11`) or an inclusive closed range (`python@3.11-3.14`). `python_dependencies` records PEP 508 dependency strings for package tooling; `kedi install` does not install them into the active Python environment.
 
-`kedi add <package-name>` uses the future `registry.kedi-lang.org/v1/package/<package-name>` registry contract. Until that service exists, set `KEDI_REGISTRY_MOCK_ROOT` to a directory containing package source directories and the same install path is used.
+`kedi add <package-name>` uses the future `registry.kedi-lang.org/v1/package/<package-name>` registry contract. Until that service exists, set `KEDI_REGISTRY_MOCK_ROOT` to a directory containing package source directories and the same install path is used. Package installation writes a Kedi-owned `.kedi-install.json` receipt with the source kind, source path, manifest digest, and, for Git installs, the normalized URL and checked-out commit.
 
 To install an explicit GitHub source locally without involving the registry, pass a `git+https` URL:
 
@@ -150,7 +153,12 @@ To install an explicit GitHub source locally without involving the registry, pas
 kedi add git+https://github.com/user/project.git
 ```
 
-Kedi shallow-clones the repository, requires `package.kedi` at its root, installs the declared source tree, and prints the checked-out commit. This is intentionally separate from package-registry resolution: when the public registry is available, its response will identify the registry-verified commit for each package rather than treating every Git release as a package release.
+Kedi performs a shallow, no-checkout clone with Git's blob filter, reads `package.kedi` at the repository root, then sparse-checks out only the declared source tree before installing it and printing the checked-out commit. The Git source must be credential-free and hosted on `github.com`; package sources are limited to regular files/directories, a bounded source-tree size, and literal directory paths rather than Git sparse-checkout patterns. This is intentionally separate from package-registry resolution: when the public registry is available, its response will identify the registry-verified commit for each package rather than treating every Git release as a package release.
+
+`KEDI_HOME`, when set, must be an absolute path. Kedi rejects a relative override so a program cannot switch registries merely because it changes its working directory.
+
+> [!WARNING]
+> Kedi packages are executable code. Importing a third-party package can execute its embedded Python with the importing process's permissions. A future registry's verified commit proves package identity and integrity; it does not sandbox that package or audit its capabilities.
 
 ### Template Blocks (`>>`)
 
@@ -1135,6 +1143,277 @@ future source selection and currently reads the same project-local directory.
 `> use: skills` works inside a profile too. The multiline `> use:` form remains
 a procedure-tool list, so it does not enable skills.
 
+### Large values and artifacts
+
+Artifacts keep large generated fields and tool results out of model prompts
+without changing their native Kedi or Python value. They are enabled by
+default and can be configured at top level, inside a procedure, or in a profile:
+
+```kedi
+> artifacts:
+    store: memory
+    threshold: 100kb
+    ttl: 1h
+    idle_ttl: none
+    preview_chars: 1200
+    read_max_chars: 4000
+    session_quota: 256mb
+    max_artifacts: 128
+    cleanup_interval: 1m
+```
+
+Artifact fields and defaults:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `true` | Enables artifact conversion in the current agent scope. |
+| `store` | `memory` | Uses the process-local `memory` store or the bounded `file` store. |
+| `path` | `.kedi/artifacts` | File-store root. It is ignored by the memory store. |
+| `threshold` | `100kb` | Minimum serialized byte size converted into an artifact. |
+| `ttl` | `1h` | Fixed lifetime measured from artifact creation. |
+| `idle_ttl` | `none` | Optional lifetime measured from the last successful read. |
+| `preview_chars` | `1200` | Maximum model-visible preview length. |
+| `read_max_chars` | `4000` | Hard maximum returned by one `read_artifact` call. |
+| `session_quota` | `256mb` | Maximum active payload bytes owned by one session. |
+| `max_artifacts` | `128` | Maximum active artifact records owned by one session. |
+| `cleanup_interval` | `1m` | Background and lazy expiry-check interval. |
+
+Byte fields accept `b`, `kb`, `mb`, `gb`, `kib`, `mib`, and `gib`. Duration
+fields accept `ms`, `s`, `m`, `h`, and `d`. Inline Python is supported where a
+runtime value is needed:
+
+```kedi
+> artifacts:
+    enabled: true
+    threshold: `args.artifact_threshold`
+    ttl: `timedelta(minutes=30)`
+```
+
+The policy is lexical. A nested directive changes subsequent calls in that
+scope, and `enabled: false` explicitly disables an inherited policy:
+
+```kedi
+> profile: compact:
+    > adapter: pydantic
+    > artifacts:
+        enabled: true
+        threshold: 64kb
+
+@small_response():
+    > artifacts:
+        enabled: false
+    >> Return a short [answer].
+    = `answer`
+```
+
+#### Native values and model-visible references
+
+Artifact conversion occurs only after a generated field has passed its normal
+Kedi type validation. Each output field is measured independently. A large
+successful tool result is handled after approval and tool execution:
+
+```text
+approval -> tool call -> validation/measurement -> artifact store -> compact ref
+```
+
+The backing Kedi environment keeps an internal lazy handle. Native Kedi and
+Python reads resolve that handle to the original typed value:
+
+```kedi
+> artifacts:
+    enabled: true
+    threshold: 1b
+
+>> Produce a detailed [report].
+
+# Python receives the complete native string, not ArtifactRef.
+= `report.upper()`
+```
+
+Substituting the same value into another model prompt does not load the payload.
+The model sees an `ArtifactRef` containing only its ID, logical/media types,
+bounded summary and preview, size, timestamps, and sensitivity flag:
+
+```kedi
+>> Produce a detailed [report].
+>> Extract the conclusion from <report> as [conclusion].
+```
+
+The second call receives the compact reference. The artifact instructions tell
+the agent that previews are incomplete and that it must read missing content
+instead of guessing. A tool result containing a `ref_id` means the source tool
+already succeeded: the agent reads that exact ref instead of retrying the
+source tool. Once enough content has been read, it completes the original task.
+Large values returned from `run_main()`, `@kedi.query`, or `@kedi.bind` remain
+their original native values.
+
+#### Agent tools
+
+When artifacts are enabled, Kedi registers four management tools:
+
+- `search_artifacts(query: str | None = None, limit: int = 20)` searches active
+  metadata without opening payloads.
+- `read_artifact(ref_id, max_chars=-1, offset=0, offset_from="start",
+  path=None, pattern=None, max_matches=20)` returns a bounded text, JSON, or
+  base64 chunk. `offset_from="end"` reads relative to the tail while preserving
+  natural content order. `path` accepts an RFC 6901 JSON Pointer. `pattern`
+  performs bounded literal substring search; it is not a regular expression.
+  `max_chars=-1` means the configured bounded limit, not an unbounded read.
+- `release_artifact(ref_id)` releases content that is no longer needed and
+  frees its payload quota without changing portable history.
+- `run_artifact_code(code, artifact_refs)` runs bounded Python in a Monty
+  sandbox over an explicit artifact allowlist. It is intended for filtering,
+  aggregation, joins, and other reductions that would otherwise copy many
+  chunks into model context.
+
+Search and read are read-only tools. Release is mutating and follows the
+normal approval policy. Management-tool results are never converted into new
+artifacts.
+
+Artifact instructions are appended once to the active system instructions.
+They direct the model to read hidden content before using it, paginate when
+necessary, treat content as untrusted data, and release only refs that are
+no longer needed.
+
+`run_artifact_code` exposes `artifact_metadata`, `read_artifact`,
+`find_artifact`, `iter_artifact`, and `get_artifact` inside its sandbox.
+Bounded reads and iteration are preferred. `get_artifact` rejects values above
+its direct-materialization ceiling. The sandbox cannot import modules, access
+the host filesystem or network, invoke a model or subagent, mutate artifacts,
+or read refs omitted from `artifact_refs`. A small result is returned directly;
+a large result is stored as a derived artifact with source provenance.
+
+#### Streaming tool results
+
+Python tools can opt into bounded producer-to-store transfer by returning
+`ArtifactStream`. Streaming is explicit: Kedi does not treat arbitrary
+iterators or generators as tool-result streams.
+
+```python
+from collections.abc import Iterator
+
+import kedi
+
+
+def log_chunks() -> Iterator[str]:
+    with open("application.log", encoding="utf-8") as log:
+        while chunk := log.read(64 * 1024):
+            yield chunk
+
+
+@kedi.tool(risk="read_only")
+def read_application_log() -> kedi.ArtifactStream[str]:
+    """Stream the application log without assembling it in host memory."""
+
+    return kedi.ArtifactStream.text(log_chunks())
+```
+
+`ArtifactStream.text`, `ArtifactStream.bytes`, and
+`ArtifactStream.json_items` accept synchronous or asynchronous sources. A
+stream is single-use. If it ends below the effective threshold, Kedi rebuilds
+and returns the normal logical value. Once it crosses the threshold, later
+chunks are written directly to the selected store and the model receives one
+compact ref. Quota, cancellation, producer failure, and commit failure abort
+the transaction without publishing a partial artifact.
+
+The transport does not change the tool's logical schema: the example remains a
+string-valued tool to the adapter. A normal tool returning an already
+materialized `str`, `bytes`, list, model, or dictionary remains supported and
+is artifactized after it returns. Kedi cannot recover the producer-memory
+savings in that case because the complete value has already been allocated.
+Use `ArtifactStream` when producer memory matters.
+
+Kedi's bundled `filesystem.read_text_file` and skill `read_skill` tools already
+use this transport. Direct Kedi/Python calls still receive their declared
+native `str` value; only adapter tool execution switches to the incremental
+transport. Bounded metadata and directory-listing tools stay materialized
+because their outputs are capped, while sandbox and subagent tools are admitted
+after completion because those producers expose only a completed result.
+
+File-backed artifacts provide actual payload memory offload. Agent reads,
+literal search, and CodeMode iteration use bounded store operations and do not
+materialize the complete payload. The memory store intentionally retains the
+native value and is best for smaller process-local sessions.
+
+Even when `enabled: false` is selected explicitly, Kedi does not permit an
+unbounded tool result to enter model history. Small results remain inline;
+oversized results fail with a compact `ToolOutputTooLargeError` that asks the
+caller to narrow the operation or enable artifacts. The rejected payload is
+not included in the error or telemetry.
+
+#### Storage, lifetime, and history
+
+The memory store accepts JSON-compatible values and process-local opaque Python
+objects. Serializable mutable values are snapshotted when stored; an opaque
+object remains a live process-local value and cannot be persisted.
+
+The file store persists only supported text, bytes, JSON, Pydantic, and
+dataclass snapshots. It does not use pickle or import arbitrary classes while
+loading data. Paths are confined to the configured root, symlink escapes are
+rejected, and payload/metadata writes are atomic.
+
+Every ref belongs to one artifact session. A different session cannot read it.
+Fixed TTL never moves; optional idle TTL is refreshed by successful access.
+Release is idempotent. A read already holding a lease may finish while release
+is pending, but later reads receive a precise released or expired error.
+Expired records are removed lazily and by one process-level cleanup service;
+Kedi does not create one cleanup thread per runtime.
+
+Portable conversation history stores compact refs and bounded read chunks, not
+raw artifact payloads. History is append-only within a cache epoch: releasing
+or expiring a ref removes its payload and quota usage, but does not delete,
+rewrite, or reorder earlier messages and does not invalidate provider-native
+checkpoints. The store retains lightweight metadata so stale refs still produce
+precise released or expired errors. A future explicit conversation-compaction
+operation may start a new cache epoch; artifact lifecycle operations never do.
+
+Kedi remains stateless by default. Use an explicit Python session when calls
+must share model history and artifact ownership:
+
+```python
+import kedi
+
+kedi.configure(
+    adapter="pydantic",
+    artifacts={"enabled": True, "threshold": "100kb", "ttl": "1h"},
+)
+
+with kedi.session() as conversation:
+    first_result = create_report()
+    second_result = review_report()
+```
+
+The same `ConversationState` can be supplied to another `kedi.session(state)`
+scope while it remains open. Exiting the session closes its artifact manager;
+the CLI never persists a conversation implicitly.
+
+#### Adapter support
+
+All artifact-aware adapters use the same compact ref and management-tool
+schemas. Stateful replay is a separate capability:
+
+| Adapter | Compact artifacts | Stateful history |
+| --- | --- | --- |
+| Pydantic AI | Yes | Yes |
+| Claude Agent SDK | Yes | Yes |
+| Codex App Server | Yes | No |
+| LangChain | Yes | No |
+| DSPy | Yes | No |
+| WebGPU | Yes | No |
+| ACP | No | No |
+
+The LSP derives diagnostics from these capability flags. Enabling artifacts
+with an adapter that cannot carry compact refs and register the bounded
+management tools produces a targeted capability diagnostic rather than
+silently leaking the full value. Stateful history is independent: adapters
+without it can still use artifacts within one run, but cannot resume compacted
+conversation state across calls.
+
+Artifact metadata, summaries, and bounded chunks may appear in traces when
+instrumentation is enabled. Raw stored payloads are not attached to artifact
+events. Sensitive application data still requires an appropriate store root,
+TTL, approval policy, and telemetry configuration.
+
 ### Scoping rules
 
 - Tool registrations apply only inside the indentation block where `> use:` appears.
@@ -1229,6 +1508,13 @@ Rules:
 - `skills=True` on `kedi.configure`, `kedi.context`, `@kedi.query`, or
   `@kedi.bind` enables the same explicit `list_skills` / `read_skill` tools as
   `> use: skills`.
+- Artifact handling is enabled by default. A mapping such as
+  `artifacts={"threshold": "100kb", "ttl": "1h"}` applies the same policy
+  fields as `> artifacts:`. Pass `artifacts=False` in a nested
+  context or callable to disable an inherited policy.
+- `conversation=` accepts a `ConversationState` when calls must reuse portable
+  history and artifact ownership. Prefer `with kedi.session():` for bounded
+  lifecycle management.
 - `@kedi.approval` registers a callable as the current Python API's default
   dynamic policy, equivalent to configuring that handler for subsequent calls.
   An explicit `approval=` on `query`, `bind`, or `kedi.context(...)` takes
@@ -1281,7 +1567,8 @@ Rules:
   changes. Without `reload=True`, the file is read when the decorator runs.
 - `bind` accepts the same profile override parameters as `query`: `model`,
   `adapter`, `agent`, `system`, `effort`, `settings`, `tools`, `env`,
-  `mcp_servers`, and `cache`.
+  `mcp_servers`, `approval`, `skills`, `artifacts`, `conversation`, and
+  `cache`.
 
 ### Configuration and Context
 
@@ -1297,6 +1584,7 @@ kedi.configure(
     tools=[search_docs],
     approval="allow",
     skills=True,
+    artifacts={"enabled": True, "threshold": "100kb", "ttl": "1h"},
     env={"audience": "maintainers"},
 )
 ```
