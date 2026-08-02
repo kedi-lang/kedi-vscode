@@ -939,8 +939,8 @@ opt into project-local skills.
   literal code fence marker.
 - `> profile: name:` — define a reusable profile with nested `> agent:`,
   `> adapter:`, `> model:`, `> effort:`, `> approval:`, `> system:`,
-  `> settings:`, `> mcp:`, `> subagent:`, and/or `> use:` members.
-  A profile that delegates may also set `> max_agents: N`.
+  `> settings:`, `> mcp:`, `> subagent:`, `> workflow:`, and/or `> use:`
+  members. A profile that delegates may also set `> max_agents: N`.
 - Profile docstrings: if the first statement inside a profile body is a block
   comment, its body becomes profile documentation and is shown in editor hovers.
   A block comment after any other profile statement remains a normal comment.
@@ -989,6 +989,60 @@ The parent may delegate only to profiles named directly in its own body.
 Forward references are supported, while unknown profiles and cyclic profile
 graphs are rejected.
 
+Subagent orchestration has two profile-level modes. Omitting `> workflow:` is
+equivalent to `> workflow: delegate` and preserves the delegation and lifecycle
+tools described below. `> workflow: dynamic` instead exposes one sequential
+`run_workflow(code: str)` tool:
+
+```kedi
+> profile: coordinator:
+    > adapter: pydantic
+    > subagent: researcher
+    > subagent: reviewer
+    > workflow: dynamic
+    > max_agents: 8
+```
+
+The parent model writes restricted Python orchestration code for that tool.
+Each direct child is available in the code as an async keyword-only function:
+
+```python
+import asyncio
+
+research, review = await asyncio.gather(
+    researcher(task="Collect evidence for the claim."),
+    reviewer(task="List the acceptance criteria."),
+)
+{
+    "research": research["task_summary"],
+    "review": review["task_summary"],
+}
+```
+
+The last expression becomes the workflow result. A child call returns
+`run_id`, `subagent`, `task_summary`, and `final_result`. Passing a validated
+JSON Schema as `final_schema` populates `final_result`; otherwise the raw child
+response is carried by `task_summary`. Independent calls may use
+`asyncio.gather`, while ordinary `await` preserves sequential dependencies.
+
+Dynamic code runs in Monty, not host Python. It cannot access Kedi runtime
+objects, adapters, credentials, environment variables, the filesystem,
+network, processes, or arbitrary imports. Real child work still passes through
+the normal coordinator, so profile isolation, model/tool resolution, approval
+ceilings, cwd/sandbox limits, usage accounting, cancellation, concurrency, and
+ancestor budgets are identical to delegate mode. Dynamic workflows cannot
+nest. A child may still use ordinary delegation within the existing depth and
+budget ceilings.
+
+Syntax and type errors happen before a child starts. A child failure appears to
+the workflow as a sanitized `RuntimeError`, which the generated code may catch
+and recover from. Completed identical calls are retained in a bounded retry
+salvage table so a corrected workflow does not pay for the same successful
+child twice. Exhausting `max_agents` returns a terminal structured error;
+canceling `run_workflow` cancels and joins every owned child before returning.
+Workflow output and printed diagnostics are bounded, and only JSON-safe values
+cross the Monty boundary.
+
 `> max_agents: N` limits how many descendant subagent invocations one
 invocation of that profile may start. Repeated calls to the same child count
 separately, failed or cancelled calls still consume budget, and rejected calls
@@ -1014,7 +1068,8 @@ With a schema, Kedi asks for a short `task_summary` plus the schema-conforming
 result and validates the response again before returning it. The tool result
 always includes `run_id`, `subagent`, `task_summary`, and `final_result`.
 
-Every subagent-capable adapter also exposes `continue_subagent`. It accepts a
+In delegate mode, every subagent-capable adapter also exposes
+`continue_subagent`. It accepts a
 completed `run_id`, a new `task`, and an optional `final_schema`, then creates
 a new run in the same bounded child conversation. Only the latest completed
 run may be continued, the calling profile must own that conversation, and one
