@@ -868,8 +868,7 @@ opt into project-local skills.
 - `> approval: allow` / `> approval: deny` — configure tool-call approval for
   subsequent agent calls in the current scope. `allow` permits registered
   mutating or sensitive tools; `deny` refuses them. In the Python API, omitting
-  a policy
-  allows read-only tools automatically and refuses mutating or sensitive tools.
+  a policy allows read-only tools automatically and refuses mutating or sensitive tools.
   The `kedi` CLI instead asks interactively for every mutating or sensitive
   call, offering **Allow once**, **Deny**, and **Allow always for this run**.
   The last option is scoped to the current CLI process and the same tool/risk
@@ -894,6 +893,19 @@ opt into project-local skills.
   `ApprovalDecision.allow()`, `ApprovalDecision.deny()`, or
   `ApprovalDecision.edit({...})`. `edit` is available only from a handler;
   `> approval: edit` is invalid.
+
+  The bundled `helpers` module provides an LLM-backed handler that uses the
+  active model to classify intrinsic risk and allow or deny the call:
+
+  ```kedi
+  > import: helpers
+  > approval: `llm_approval`
+  ```
+
+  `llm_approval` evaluates only the tool name, description, declared risk, and
+  call arguments. Approval requests do not currently include a call reason, so
+  the model judges with limited information. This helper is experimental and is
+  not a stable feature.
 - `> system: text` — set active agent instructions for subsequent procedure
   captures and prompt calls.
 - `> settings:` — set active model configuration for subsequent procedure
@@ -1826,6 +1838,41 @@ kedi.clear_cache()
 `cache_info()` returns the number of parse and response cache entries.
 `clear_cache()` clears both memory caches. Response caching is opt-in with
 `cache=True`; parse caching is always source-hash based.
+
+## Telemetry
+
+Kedi exposes a dependency-free telemetry seam and performs no telemetry work by
+default. Install and enable the separate
+`opentelemetry-instrumentation-kedi` package to publish native OpenTelemetry
+spans and metrics:
+
+```python
+from opentelemetry.instrumentation.kedi import KediInstrumentor
+
+KediInstrumentor().instrument()
+```
+
+The application owns its OpenTelemetry SDK, resource, sampler, and exporter.
+Use `service.name=kedi`; Kedi emits instrumentation under `kedi.runtime`,
+`kedi.agent`, and `kedi.artifacts` scopes. Logfire can be used as the configured
+OpenTelemetry backend without changing Kedi's instrumentation API.
+
+Runtime telemetry covers parse, compile, program execution, procedure calls,
+and embedded Python. Agent telemetry covers agent/model runs, tool calls, MCP,
+approvals, subagents, and dynamic workflows. Artifact telemetry covers storage,
+reads, releases, expiry, cleanup, quota rejection, and context bytes avoided.
+Pydantic AI instrumentation is enabled by default; HTTPX instrumentation is an
+explicit opt-in.
+
+The default privacy policy does not capture prompt/output content, binary
+content, source paths or snippets, model request parameters, tool definitions,
+exception messages, or stack traces. Each class requires its own explicit
+capture option. `runtime_detail` accepts `"off"`, `"lifecycle"`, or
+`"detailed"`; agent and artifact telemetry can be disabled independently.
+
+See the dedicated **Telemetry** guide in the Kedi documentation for the full
+configuration, span hierarchy, attributes, metrics, privacy rules, and
+instrumentation lifecycle.
 
 ## Command-Line Parse Helpers
 
