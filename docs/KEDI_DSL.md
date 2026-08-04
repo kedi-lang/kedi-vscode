@@ -939,7 +939,7 @@ opt into project-local skills.
   literal code fence marker.
 - `> profile: name:` — define a reusable profile with nested `> agent:`,
   `> adapter:`, `> model:`, `> effort:`, `> approval:`, `> system:`,
-  `> settings:`, `> mcp:`, `> subagent:`, `> workflow:`, and/or `> use:`
+  `> settings:`, `> mcp:`, `> output:`, `> subagent:`, `> workflow:`, and/or `> use:`
   members. A profile that delegates may also set `> max_agents: N`.
 - Profile docstrings: if the first statement inside a profile body is a block
   comment, its body becomes profile documentation and is shown in editor hovers.
@@ -965,6 +965,8 @@ Codex App Server, LangChain, and DSPy adapters. A profile may expose other
 profiles as direct children:
 
 ```kedi
+~ResearchReport(summary: str, sources: list[str])
+
 > profile: researcher:
     ###
     Investigates one focused question and reports its findings.
@@ -972,6 +974,7 @@ profiles as direct children:
     > adapter: pydantic
     > model: openrouter:google/gemini-3-flash-preview
     > system: Inspect the evidence before answering.
+    > output: ResearchReport
     > use: web_search
 
 > profile: coordinator:
@@ -988,6 +991,14 @@ profiles as direct children:
 The parent may delegate only to profiles named directly in its own body.
 Forward references are supported, while unknown profiles and cyclic profile
 graphs are rejected.
+
+A child profile may declare a default structured result type with
+`> output: Type`. Kedi accepts the same native type expressions used by fields
+and procedure signatures, including generic and custom types. When
+`delegate_task` or a dynamic child call omits `final_schema`, Kedi converts the
+profile output type to JSON Schema and returns the validated value in
+`final_result`. An explicit `final_schema` takes precedence. If neither is
+present, the child keeps the text-only `task_summary` behavior.
 
 Subagent orchestration has two profile-level modes. Omitting `> workflow:` is
 equivalent to `> workflow: delegate` and preserves the delegation and lifecycle
@@ -1059,13 +1070,15 @@ The generated tool accepts:
 
 - `subagent`: one of the direct child profile names,
 - `task`: a self-contained instruction,
-- `final_schema`: an optional JSON Schema for a validated structured result.
+- `final_schema`: an optional JSON Schema for a validated structured result;
+  when omitted, the selected child profile's `> output:` type is used.
 - `background`: when supported by the active adapter, start the child without
   blocking and return a run handle.
 
-Without `final_schema`, the child runs through the raw text `invoke` seam.
-With a schema, Kedi asks for a short `task_summary` plus the schema-conforming
-result and validates the response again before returning it. The tool result
+Without an explicit or profile-derived schema, the child runs through the raw
+text `invoke` seam. With either schema source, Kedi asks for a short
+`task_summary` plus the schema-conforming result and validates the response
+again before returning it. The tool result
 always includes `run_id`, `subagent`, `task_summary`, and `final_result`.
 
 In delegate mode, every subagent-capable adapter also exposes
@@ -1298,7 +1311,11 @@ The second call receives the compact reference. The artifact instructions tell
 the agent that previews are incomplete and that it must read missing content
 instead of guessing. A tool result containing a `ref_id` means the source tool
 already succeeded: the agent reads that exact ref instead of retrying the
-source tool. Once enough content has been read, it completes the original task.
+source tool. Reference IDs are opaque. Their numeric suffix reflects storage
+order, which can differ from call order when tools run concurrently, so agents
+must copy the exact `ref_id` returned by each tool rather than predict IDs or
+derive their identity from a suffix. Once enough content has been read, the
+agent completes the original task.
 Large values returned from `run_main()`, `@kedi.query`, or `@kedi.bind` remain
 their original native values.
 
@@ -1327,8 +1344,9 @@ artifacts.
 
 Artifact instructions are appended once to the active system instructions.
 They direct the model to read hidden content before using it, paginate when
-necessary, treat content as untrusted data, and release only refs that are
-no longer needed.
+necessary, preserve the association between each tool result and its opaque
+reference, treat content as untrusted data, and release only refs that are no
+longer needed.
 
 `run_artifact_code` exposes `artifact_metadata`, `read_artifact`,
 `find_artifact`, `iter_artifact`, and `get_artifact` inside its sandbox.
@@ -1624,6 +1642,60 @@ Rules:
   `adapter`, `agent`, `system`, `effort`, `settings`, `tools`, `env`,
   `mcp_servers`, `approval`, `skills`, `artifacts`, `conversation`, and
   `cache`.
+
+### Native Pydantic AI integration
+
+`PydanticAdapter` is also a native `pydantic_ai.Agent`. Calls through its
+`run`, `run_sync`, `iter`, `run_stream`, and `run_stream_sync` methods retain
+the active Kedi profile instead of bypassing it. Profile instructions, model
+and effort overrides, model settings, scoped tools, MCP toolsets, required-tool
+validation, approvals, and adapter telemetry therefore behave the same way on
+the native surface.
+
+The native precedence rules are explicit:
+
+- per-call instructions override the profile system instruction;
+- profile model settings override conflicting per-call settings;
+- per-call Pydantic toolsets are retained and active Kedi/MCP toolsets are
+  appended;
+- caller capabilities are retained and each required Kedi capability is
+  appended at most once.
+
+Use the public adapter-specific converter when a native Pydantic agent needs a
+Kedi `ToolSpec`:
+
+```python
+from kedi.agent_adapter import ToolSpec, pydantic_tool_from_spec
+
+
+def lookup(topic: str) -> str:
+    return f"Result for {topic}"
+
+
+spec = ToolSpec(
+    fn=lookup,
+    name="lookup",
+    description="Look up a topic.",
+    json_schema={
+        "type": "object",
+        "properties": {
+            "topic": {
+                "type": "string",
+                "description": "Topic to look up.",
+            }
+        },
+        "required": ["topic"],
+    },
+    metadata={"source": "docs"},
+)
+native_tool = pydantic_tool_from_spec(spec)
+```
+
+The conversion preserves the name, descriptions, JSON schema, metadata,
+sequential-execution flag, Kedi argument validation, and sync or async callable
+behavior. Approval remains a run-level concern and is not silently decided by
+the converter. Conversation capture, artifact ownership, skills discovery, and
+subagent coordination still require an explicit `KediRuntime` owner.
 
 ### Configuration and Context
 
