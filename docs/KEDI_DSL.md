@@ -1883,7 +1883,7 @@ $ kedi --idle
 ( o.o )
  > ^ <
 Kedi 0.4.0 on darwin
-Type "help" for interactive help, ":show" to inspect a value, or "exit()" to leave.
+Type "help" for interactive help, ":show" to inspect a value, or ":exit" to leave.
 +++ [base: int] = `40`
 +++ @add_two() -> int:
 ...     = `base + 2`
@@ -1906,9 +1906,10 @@ prints its value. For example, `:show <name>` renders a substitution, while
 top-level substitutions out of normal `.kedi` files.
 
 Top-level results use `repr()` so native values remain visible without changing
-their runtime semantics. `Ctrl+C` clears the current buffered fragment (or
-interrupts active execution), while `Ctrl+D`, `exit()`, and `quit()` close the
-session. Readline history is stored in `~/.kedi_history`; set `KEDI_HISTORY` to
+their runtime semantics. `:exit` is the only textual exit command; Python's
+`exit()` and `quit()` calls have no special meaning. `Ctrl+C` exits silently,
+including during active execution, and `Ctrl+D` also closes the session.
+Readline history is stored in `~/.kedi_history`; set `KEDI_HISTORY` to
 choose another path. Adapter selection remains available through
 `--adapter` and `--adapter-model`. Interactive mode does not accept a source
 file, `-c/--command`, program arguments, or test/eval/optimization modes.
