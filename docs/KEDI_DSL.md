@@ -860,7 +860,15 @@ opt into project-local skills.
   The command value may be plain text or an inline Python expression that
   evaluates to a string or string sequence.
 - `> model: name` — set the active model for subsequent procedure captures (plain
-  name or `` `expression` ``).
+  name or `` `expression` ``). With the Pydantic adapter, `codex/<model>` selects
+  a Codex-authenticated Responses model on Python 3.11+ through the optional
+  `kedi[codex-model]` extra. Run `codex login` before using this model family:
+
+  ```kedi
+  > adapter: pydantic
+  > model: codex/gpt-5.6-luna
+  > effort: high
+  ```
 - `> effort: level` — set active reasoning effort. Accepted values are
   `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; plain values or
   `` `expression` `` are allowed. Pydantic AI maps `max` to `xhigh`.
@@ -936,6 +944,44 @@ opt into project-local skills.
       stop_sequences: `["END", "DONE"]`
       extra_body: `{"mode": "json"}`
   ```
+
+  Provider-native conversation compaction is configured as a nested reserved
+  setting:
+
+  ```kedi
+  > settings:
+      > compaction:
+          mode: native
+          threshold: `100_000`
+  ```
+
+  `mode: native` delegates compaction to the selected provider. `threshold` is
+  an optional positive input-token count; omit it to use that integration's
+  native default. The first native implementation supports these exact paths:
+
+  - Pydantic AI with `OpenAIResponsesModel`, through `OpenAICompaction`;
+  - Pydantic AI with `AnthropicModel`, through `AnthropicCompaction`;
+  - LangChain with an OpenAI chat model, through OpenAI
+    `context_management`;
+  - LangChain with an Anthropic chat model, through Anthropic
+    `context_management` and the required compaction beta.
+
+  Kedi does not silently replace an unsupported native provider with its own
+  summarizer. Selecting `native` with another model or adapter raises a clear
+  runtime error. Disable an inherited compaction policy explicitly when a
+  nested scope must keep the full conversation:
+
+  ```kedi
+  > settings:
+      > compaction:
+          mode: disabled
+  ```
+
+  `threshold` is invalid together with `mode: disabled`. Existing unrelated
+  provider context-management entries and caller-supplied Pydantic
+  capabilities are preserved; Kedi replaces only the native compaction entry
+  it owns.
+
   ACP commands may also come from CLI/env:
 
   ```kedi
@@ -1672,6 +1718,22 @@ The native precedence rules are explicit:
   appended;
 - caller capabilities are retained and each required Kedi capability is
   appended at most once.
+
+Codex-authenticated Pydantic models can also be built directly. The returned
+object is a normal Pydantic AI `Model`, so native `PydanticAdapter` tools,
+structured outputs, profiles, and effort settings remain active:
+
+```python
+from kedi import codex_responses_model
+from kedi.agent_adapter import PydanticAdapter
+
+model = codex_responses_model("gpt-5.6-luna", adapter="pydantic")
+adapter = PydanticAdapter(model)
+```
+
+This bridge requires Python 3.11+ and `codex-auth-helper==1.6.1`, installed with
+`uv add 'kedi[codex-model]'`. Authentication comes from the user's Codex login;
+Kedi does not accept or persist a second token for this path.
 
 Use the public adapter-specific converters when a native Pydantic agent needs
 Kedi `ToolSpec` values:
