@@ -916,6 +916,52 @@ opt into project-local skills.
   not a stable feature.
 - `> system: text` — set active agent instructions for subsequent procedure
   captures and prompt calls.
+- `> history: enabled|disabled` — control whether model calls in the current
+  lexical scope share conversation history. History is disabled by default.
+  `enabled` creates one runtime-owned conversation whose complete successful
+  turns are visible to later template and raw-invoke blocks. `disabled`
+  creates a stateless nested scope: calls in that scope neither read nor mutate
+  an enabled outer conversation.
+
+  ```kedi
+  > history: enabled
+
+  >> Remember [project_name].
+  >> Using the project name from the previous call, write [tagline].
+
+  @isolated_check():
+      > history: disabled
+      >> Produce an unrelated [answer].
+      = <answer>
+
+  = <project_name>: <tagline>
+  ```
+
+  The policy is valid at top level, inside procedures, and in profiles. It is
+  lexical like the other profile directives, and a nested `disabled` policy
+  overrides an inherited `enabled` policy. Failed or cancelled calls do not
+  commit a partial turn.
+
+  History is partitioned by adapter. Switching adapters in one Kedi session
+  starts or resumes that adapter's own lane rather than translating private
+  provider messages across frameworks. Pydantic AI and LangChain replay their
+  complete portable message sequences, including tool calls and tool results.
+  Claude uses its native resumable session. Selecting `enabled` with an
+  adapter that does not advertise stateful-history support is an LSP error and
+  a runtime error.
+
+  Kedi also assigns each adapter lane an opaque, stable cache identity. OpenAI
+  integrations use it as the prompt-cache key and may reuse the previous
+  response where supported. OpenRouter integrations use the same identity for
+  sticky session routing so later calls reach a cache-compatible provider
+  endpoint. They also add OpenRouter's automatic ephemeral prompt-cache
+  directive unless the caller supplied one; Kedi does not add multiple moving
+  message breakpoints because they showed no measurable benefit for append-only
+  history. Anthropic integrations enable provider caching without rewriting the
+  ordered message prefix. Explicit model settings always override these
+  defaults. History and cache identities remain append-only within a cache
+  epoch: ordinary artifact release or expiry never deletes or reorders prior
+  messages.
 - `> settings:` — set active model configuration for subsequent procedure
   captures and prompt calls. Values are `name: value` lines; plain values are
   parsed as simple scalars (`true`, `false`, numbers, `null`) and backtick
@@ -981,6 +1027,30 @@ opt into project-local skills.
   provider context-management entries and caller-supplied Pydantic
   capabilities are preserved; Kedi replaces only the native compaction entry
   it owns.
+
+  OpenRouter's gateway-owned exact response cache is available as an explicit
+  opt-in and is separate from prompt caching:
+
+  ```kedi
+  > settings:
+      response_cache: true
+      response_cache_ttl: 3600
+  ```
+
+  The settings are provider-neutral Kedi API names. The current implementation
+  supports OpenRouter and translates them to `X-OpenRouter-Cache` and
+  `X-OpenRouter-Cache-TTL`. The TTL is optional and must be between 1 and 86400
+  seconds. The setting is rejected for non-OpenRouter models. It is disabled by
+  default because replaying a cached assistant response that contains a tool
+  call can cause the local tool to execute again; Kedi does not yet journal
+  side-effecting tool results. This cache is owned by OpenRouter and should not
+  be confused with the opt-in `cache=True` Python API cache.
+
+  Cache efficiency must be evaluated from provider usage rather than hit ratio
+  alone. Kedi telemetry records logical input, cache-read, cache-write,
+  uncached-input and output tokens, plus provider-reported USD cost when the
+  adapter exposes it. Cache-write tokens describe the cached portion of the
+  logical input and are not an additional input-token category.
 
   ACP commands may also come from CLI/env:
 
@@ -1498,8 +1568,10 @@ checkpoints. The store retains lightweight metadata so stale refs still produce
 precise released or expired errors. A future explicit conversation-compaction
 operation may start a new cache epoch; artifact lifecycle operations never do.
 
-Kedi remains stateless by default. Use an explicit Python session when calls
-must share model history and artifact ownership:
+Kedi remains stateless by default. DSL programs can opt into runtime-owned
+history with `> history: enabled`. Python callers can instead use an explicit
+session when they need direct lifecycle control over model history and artifact
+ownership:
 
 ```python
 import kedi
@@ -1515,8 +1587,9 @@ with kedi.session() as conversation:
 ```
 
 The same `ConversationState` can be supplied to another `kedi.session(state)`
-scope while it remains open. Exiting the session closes its artifact manager;
-the CLI never persists a conversation implicitly.
+scope while it remains open. Exiting the session closes its owned artifact
+manager. A DSL `> history: enabled` conversation is bounded by its
+`KediRuntime`; it is not persisted between separate CLI processes.
 
 #### Adapter support
 
@@ -1528,7 +1601,7 @@ schemas. Stateful replay is a separate capability:
 | Pydantic AI | Yes | Yes |
 | Claude Agent SDK | Yes | Yes |
 | Codex App Server | Yes | No |
-| LangChain | Yes | No |
+| LangChain | Yes | Yes |
 | DSPy | Yes | No |
 | WebGPU | Yes | No |
 | ACP | No | No |
