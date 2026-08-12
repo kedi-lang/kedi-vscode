@@ -60,6 +60,10 @@ A Kedi program consists of:
 - Indentation defines block scope (like Python)
 - Tabs count as width 4 for comparison
 - The preprocessor inserts virtual BEGIN/END tokens on indentation changes
+- A directive block has one body shape: configuration directives contain
+  unprefixed `name: value` subsettings, while composite directives such as
+  `> profile:` contain `>`-prefixed subdirectives. The two forms are not mixed
+  in one body.
 
 ## Basic Syntax Elements
 
@@ -994,15 +998,14 @@ opt into project-local skills.
   ```kedi
   > history:
       enabled: true
-      > compaction:
-          mode: native
-          threshold: `100_000`
+      compaction_mode: native
+      compaction_threshold: `100_000`
   ```
 
-  `enabled` is required in the expanded form. `mode: native` delegates
-  compaction to the selected provider. `threshold` is an optional positive
-  input-token count; omit it to use that integration's native default. Native
-  compaction requires history to be enabled. The supported paths are:
+  `enabled` is required in the expanded form. `compaction_mode: native`
+  delegates compaction to the selected provider. `compaction_threshold` is an
+  optional positive input-token count; omit it to use that integration's native
+  default. Native compaction requires history to be enabled. The supported paths are:
 
   - Pydantic AI with `OpenAIResponsesModel`, through `OpenAICompaction`;
   - Pydantic AI with `AnthropicModel`, through `AnthropicCompaction`;
@@ -1019,12 +1022,11 @@ opt into project-local skills.
   ```kedi
   > history:
       enabled: true
-      > compaction:
-          mode: disabled
+      compaction_mode: disabled
   ```
 
-  `threshold` is invalid together with `mode: disabled`. Existing unrelated
-  provider context-management entries and caller-supplied Pydantic
+  `compaction_threshold` is invalid together with `compaction_mode: disabled`.
+  Existing unrelated provider context-management entries and caller-supplied Pydantic
   capabilities are preserved; Kedi replaces only the native compaction entry
   it owns. With stateful Pydantic history, a newly emitted provider compaction
   checkpoint seals the current cache epoch. Kedi rotates the opaque cache key,
@@ -1037,8 +1039,8 @@ opt into project-local skills.
   Kedi also contains an adapter-neutral, deterministic history processor and
   transactional checkpoint foundation for future Kedi-owned compaction. The
   semantic summarizer that will produce those checkpoints is tracked in
-  [issue #80](https://github.com/kedi-lang/kedi/issues/80); no public
-  `mode: kedi` is available yet.
+  [issue #80](https://github.com/kedi-lang/kedi/issues/80); `kedi` is not yet a
+  public `compaction_mode` value.
 - `> settings:` — set active model configuration for subsequent procedure
   captures and prompt calls. Values are `name: value` lines; plain values are
   parsed as simple scalars (`true`, `false`, numbers, `null`) and backtick
