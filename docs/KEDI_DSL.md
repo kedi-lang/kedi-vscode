@@ -987,6 +987,58 @@ opt into project-local skills.
   the provider's `langchain-aws` integration package. Preconstructed LangChain
   `ChatOpenAI` models using the official Moonshot, Alibaba, DeepSeek, or Z.AI
   base URLs are recognized without changing their configured endpoint.
+
+  Use the expanded history form to configure conversation compaction alongside
+  history ownership:
+
+  ```kedi
+  > history:
+      enabled: true
+      > compaction:
+          mode: native
+          threshold: `100_000`
+  ```
+
+  `enabled` is required in the expanded form. `mode: native` delegates
+  compaction to the selected provider. `threshold` is an optional positive
+  input-token count; omit it to use that integration's native default. Native
+  compaction requires history to be enabled. The supported paths are:
+
+  - Pydantic AI with `OpenAIResponsesModel`, through `OpenAICompaction`;
+  - Pydantic AI with `AnthropicModel`, through `AnthropicCompaction`;
+  - LangChain with an OpenAI chat model, through OpenAI
+    `context_management`;
+  - LangChain with an Anthropic chat model, through Anthropic
+    `context_management` and the required compaction beta.
+
+  Kedi does not silently replace an unsupported native provider with a
+  summarizer. Selecting `native` with another model or adapter raises a clear
+  runtime error. Disable an inherited compaction policy while retaining
+  stateful history with:
+
+  ```kedi
+  > history:
+      enabled: true
+      > compaction:
+          mode: disabled
+  ```
+
+  `threshold` is invalid together with `mode: disabled`. Existing unrelated
+  provider context-management entries and caller-supplied Pydantic
+  capabilities are preserved; Kedi replaces only the native compaction entry
+  it owns. With stateful Pydantic history, a newly emitted provider compaction
+  checkpoint seals the current cache epoch. Kedi rotates the opaque cache key,
+  drops stale continuation state from other adapter lanes, and retains the
+  provider's compacted messages as the first state of the new epoch. Replayed
+  checkpoints do not rotate the epoch again. LangChain currently owns its
+  provider continuation internally because its public message result does not
+  expose a stable cross-provider compaction marker.
+
+  Kedi also contains an adapter-neutral, deterministic history processor and
+  transactional checkpoint foundation for future Kedi-owned compaction. The
+  semantic summarizer that will produce those checkpoints is tracked in
+  [issue #80](https://github.com/kedi-lang/kedi/issues/80); no public
+  `mode: kedi` is available yet.
 - `> settings:` — set active model configuration for subsequent procedure
   captures and prompt calls. Values are `name: value` lines; plain values are
   parsed as simple scalars (`true`, `false`, numbers, `null`) and backtick
@@ -1015,49 +1067,6 @@ opt into project-local skills.
       stop_sequences: `["END", "DONE"]`
       extra_body: `{"mode": "json"}`
   ```
-
-  Provider-native conversation compaction is configured as a nested reserved
-  setting:
-
-  ```kedi
-  > settings:
-      > compaction:
-          mode: native
-          threshold: `100_000`
-  ```
-
-  `mode: native` delegates compaction to the selected provider. `threshold` is
-  an optional positive input-token count; omit it to use that integration's
-  native default. The first native implementation supports these exact paths:
-
-  - Pydantic AI with `OpenAIResponsesModel`, through `OpenAICompaction`;
-  - Pydantic AI with `AnthropicModel`, through `AnthropicCompaction`;
-  - LangChain with an OpenAI chat model, through OpenAI
-    `context_management`;
-  - LangChain with an Anthropic chat model, through Anthropic
-    `context_management` and the required compaction beta.
-
-  Kedi does not silently replace an unsupported native provider with its own
-  summarizer. Selecting `native` with another model or adapter raises a clear
-  runtime error. Disable an inherited compaction policy explicitly when a
-  nested scope must keep the full conversation:
-
-  ```kedi
-  > settings:
-      > compaction:
-          mode: disabled
-  ```
-
-  `threshold` is invalid together with `mode: disabled`. Existing unrelated
-  provider context-management entries and caller-supplied Pydantic
-  capabilities are preserved; Kedi replaces only the native compaction entry
-  it owns. With stateful Pydantic history, a newly emitted provider compaction
-  checkpoint seals the current cache epoch. Kedi rotates the opaque cache key,
-  drops stale continuation state from other adapter lanes, and retains the
-  provider's compacted messages as the first state of the new epoch. Replayed
-  checkpoints do not rotate the epoch again. LangChain currently owns its
-  provider continuation internally because its public message result does not
-  expose a stable cross-provider compaction marker.
 
   OpenRouter's gateway-owned exact response cache is available as an explicit
   opt-in and is separate from prompt caching:
