@@ -952,16 +952,41 @@ opt into project-local skills.
 
   Kedi also assigns each adapter lane an opaque, stable cache identity. OpenAI
   integrations use it as the prompt-cache key and may reuse the previous
-  response where supported. OpenRouter integrations use the same identity for
-  sticky session routing so later calls reach a cache-compatible provider
-  endpoint. They also add OpenRouter's automatic ephemeral prompt-cache
-  directive unless the caller supplied one; Kedi does not add multiple moving
-  message breakpoints because they showed no measurable benefit for append-only
-  history. Anthropic integrations enable provider caching without rewriting the
-  ordered message prefix. Explicit model settings always override these
-  defaults. History and cache identities remain append-only within a cache
-  epoch: ordinary artifact release or expiry never deletes or reorders prior
-  messages.
+  response where supported. Pydantic AI's OpenRouter integration receives its
+  native instruction, message, and tool-definition cache settings. LangChain's
+  OpenRouter integration receives its native sticky-session identity plus
+  ephemeral cache-control content blocks on the stable system prompt and latest
+  user message. Replayed LangChain history has prior Kedi-generated markers
+  removed before the latest marker is placed, so marker metadata does not grow
+  on every turn and message order remains unchanged. Anthropic integrations use
+  their framework-native cache settings or content blocks without rewriting the
+  ordered message prefix. Google Gemini integrations preserve the same ordered
+  prefix but add no cache setting: Gemini 2.5 and newer use provider-managed
+  implicit caching and report cache-read tokens in usage metadata. Explicit
+  Google cached-content resources have a separate lifecycle and are not created
+  automatically. Explicit model settings always override Kedi defaults. History
+  and cache identities remain append-only within a cache epoch: ordinary
+  artifact release or expiry never deletes or reorders prior messages.
+
+  Direct-provider prefix caching follows each provider's native contract:
+
+  | Provider | Kedi integration |
+  | --- | --- |
+  | Moonshot AI | Reuses the conversation cache identity as `prompt_cache_key`. |
+  | Alibaba Cloud Model Studio | Preserves the ordered prefix and relies on provider-managed implicit caching. |
+  | Z.AI | Preserves the ordered prefix and relies on provider-managed implicit caching. |
+  | Amazon Bedrock | Enables Pydantic AI's instruction, message, and tool-definition cache points. LangChain uses `BedrockPromptCachingMiddleware`. |
+  | Azure OpenAI | Reuses the conversation cache identity as `prompt_cache_key`; Responses models may also continue from the previous response. |
+  | DeepSeek | Preserves the ordered prefix and relies on provider-managed implicit caching. |
+  | xAI | Preserves the ordered prefix and relies on provider-managed automatic prefix caching. |
+
+  These integrations do not emulate a provider cache in Kedi. Alibaba,
+  DeepSeek, Z.AI, and xAI require no request flag for their implicit cache.
+  Moonshot and Azure receive only their supported stable routing key. Bedrock
+  receives explicit framework-native cache points; with LangChain this requires
+  the provider's `langchain-aws` integration package. Preconstructed LangChain
+  `ChatOpenAI` models using the official Moonshot, Alibaba, DeepSeek, or Z.AI
+  base URLs are recognized without changing their configured endpoint.
 - `> settings:` — set active model configuration for subsequent procedure
   captures and prompt calls. Values are `name: value` lines; plain values are
   parsed as simple scalars (`true`, `false`, numbers, `null`) and backtick
@@ -1026,7 +1051,13 @@ opt into project-local skills.
   `threshold` is invalid together with `mode: disabled`. Existing unrelated
   provider context-management entries and caller-supplied Pydantic
   capabilities are preserved; Kedi replaces only the native compaction entry
-  it owns.
+  it owns. With stateful Pydantic history, a newly emitted provider compaction
+  checkpoint seals the current cache epoch. Kedi rotates the opaque cache key,
+  drops stale continuation state from other adapter lanes, and retains the
+  provider's compacted messages as the first state of the new epoch. Replayed
+  checkpoints do not rotate the epoch again. LangChain currently owns its
+  provider continuation internally because its public message result does not
+  expose a stable cross-provider compaction marker.
 
   OpenRouter's gateway-owned exact response cache is available as an explicit
   opt-in and is separate from prompt caching:
@@ -1565,8 +1596,10 @@ raw artifact payloads. History is append-only within a cache epoch: releasing
 or expiring a ref removes its payload and quota usage, but does not delete,
 rewrite, or reorder earlier messages and does not invalidate provider-native
 checkpoints. The store retains lightweight metadata so stale refs still produce
-precise released or expired errors. A future explicit conversation-compaction
-operation may start a new cache epoch; artifact lifecycle operations never do.
+precise released or expired errors. A newly emitted Pydantic provider-compaction
+checkpoint starts a new cache epoch while preserving the compacted state;
+artifact lifecycle operations never do. Kedi-owned summarizing compaction is a
+separate future feature.
 
 Kedi remains stateless by default. DSL programs can opt into runtime-owned
 history with `> history: enabled`. Python callers can instead use an explicit
@@ -1915,6 +1948,77 @@ Do not use `DeferredToolRequests.build_results()` directly for edited Kedi
 tools. That generic Pydantic API cannot run the original Kedi
 `argument_validator`; the helper needs the retained `tool_specs` list to do so
 before constructing `DeferredToolResults`.
+
+### Agent Stream Events
+
+Kedi exposes an adapter-neutral event stream for completed semantic agent
+messages. It is deliberately not a token stream: provider deltas, mutable
+snapshots, and hidden reasoning remain private until the adapter identifies a
+complete assistant message. Consumers therefore receive stable commentary and
+final text without reconstructing provider-specific chunks.
+
+Observation is a side channel and does not replace the adapter result:
+
+```python
+import asyncio
+
+from kedi import AgentMessageEvent, AgentRunStateEvent, observe_agent_events
+from kedi.agent_adapter import PydanticAdapter
+
+events = []
+adapter = PydanticAdapter("openai:gpt-4o-mini")
+
+with observe_agent_events(events.append):
+    result = asyncio.run(adapter.invoke(prompt="Inspect the parser."))
+
+for event in events:
+    if isinstance(event, AgentMessageEvent):
+        print(event.phase, event.content)
+    elif isinstance(event, AgentRunStateEvent):
+        print(event.state)
+```
+
+The result remains the authoritative return value. Event delivery does not
+change prompts, tools, schemas, history, usage accounting, or exceptions.
+`AsyncAgentEventQueue` is available when an async UI needs a thread-safe queue
+sink instead of a callback.
+
+For a tool-backed `invoke()`, a typical observable sequence is:
+
+```text
+started
+commentary  Checking the registry.
+final       The requested value is ready.
+completed
+```
+
+The tool executes between the commentary and final messages. This API does not
+publish a separate tool-call event: the tool boundary seals preceding completed
+assistant text as commentary, while text produced after the tool result becomes
+the authoritative final response. Tool execution remains available through the
+adapter's normal tool and telemetry surfaces.
+
+The public event contract is:
+
+- every observed run emits `started` and exactly one terminal state:
+  `completed`, `failed`, or `cancelled`;
+- `AgentMessageEvent.phase` is either `commentary` or `final`;
+- only completed semantic messages are published, never token deltas;
+- `invoke()` may emit one authoritative final message after successful
+  completion;
+- structured `produce()` does not publish its schema payload as natural-
+  language final text;
+- tool boundaries can resolve earlier completed text as commentary;
+- subagent events use the coordinator run ID and carry `parent_run_id`, so
+  concurrent child runs can be rendered independently;
+- sink failures are isolated from model execution, and a slow sink cannot
+  block provider or SDK reader threads indefinitely.
+
+Stream support is capability-driven. Pydantic AI, LangChain, Claude Agent SDK,
+Codex App Server, and ACP currently expose semantic events. DSPy and WebGPU do
+not yet provide trustworthy completed-message boundaries and advertise
+`supports_stream_events=False`. `LazyAdapter` reports the capability of the
+adapter it resolves.
 
 ### Configuration and Context
 
