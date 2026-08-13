@@ -950,9 +950,11 @@ opt into project-local skills.
   starts or resumes that adapter's own lane rather than translating private
   provider messages across frameworks. Pydantic AI and LangChain replay their
   complete portable message sequences, including tool calls and tool results.
-  Claude uses its native resumable session. Selecting `enabled` with an
-  adapter that does not advertise stateful-history support is an LSP error and
-  a runtime error.
+  Claude uses its native resumable session. Codex starts a non-ephemeral App
+  Server thread, resumes that thread for later calls, and deletes it when the
+  Kedi conversation closes or its configuration lane is replaced. Selecting
+  `enabled` with an adapter that does not advertise stateful-history support is
+  an LSP error and a runtime error.
 
   Kedi also assigns each adapter lane an opaque, stable cache identity. OpenAI
   integrations use it as the prompt-cache key and may reuse the previous
@@ -1012,7 +1014,17 @@ opt into project-local skills.
   - LangChain with an OpenAI chat model, through OpenAI
     `context_management`;
   - LangChain with an Anthropic chat model, through Anthropic
-    `context_management` and the required compaction beta.
+    `context_management` and the required compaction beta;
+  - Codex App Server, through its persistent thread and
+    `model_auto_compact_token_limit` configuration;
+  - Claude Agent SDK, through its native automatic session compaction.
+
+  Codex accepts `compaction_threshold` as an explicit thread token limit.
+  Claude Agent SDK does not expose an exact compaction threshold: omit
+  `compaction_threshold` to use its native policy. Supplying a threshold in a
+  Claude scope fails before the model call. `compaction_mode: disabled` stops
+  Kedi from adding a compaction policy; it does not override compaction already
+  owned internally by an agent harness.
 
   Kedi does not silently replace an unsupported native provider with a
   summarizer. Selecting `native` with another model or adapter raises a clear
@@ -1644,7 +1656,7 @@ schemas. Stateful replay is a separate capability:
 | --- | --- | --- |
 | Pydantic AI | Yes | Yes |
 | Claude Agent SDK | Yes | Yes |
-| Codex App Server | Yes | No |
+| Codex App Server | Yes | Yes |
 | LangChain | Yes | Yes |
 | DSPy | Yes | No |
 | WebGPU | Yes | No |
