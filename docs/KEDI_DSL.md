@@ -801,10 +801,10 @@ Dataset items can follow two conventions:
 ## Agent Profiles and Tools
 
 Kedi routes LLM calls through agent adapters. Use `> adapter:`, `> agent:`,
-`> model:`, `> effort:`, `> approval:`, `> system:`, `> mcp:`, `> profile:`, and `> use:`
+`> model:`, `> effort:`, `> approval:`, `> skills:`, `> system:`, `> mcp:`, `> profile:`, and `> use:`
 to choose adapter implementations, choose models, set reasoning effort, set
 agent instructions, load MCP tools, expose Kedi procedures as agent tools, and
-opt into project-local skills.
+enable scoped skill discovery.
 
 ### Model and profile directives
 
@@ -1347,8 +1347,6 @@ Single-line form:
 1. If a procedure named `foo` exists, register it as an **agent tool** for the
    current indentation block.
 2. Otherwise merge the agent profile named `foo`.
-3. `> use: skills` enables the project-local skill tools described below.
-
 Backticks on the single-line form are accepted for symmetry with `> model:`.
 
 Multiline form always lists tools (never profiles):
@@ -1364,34 +1362,80 @@ are accepted for symmetry with `> model:`.
 
 ### One-file skills
 
-Skills are opt-in, project-local instructions stored as one plain file per
-skill:
+Skills are opt-in instructions stored as one plain file per skill:
 
 ```text
 .agents/skills/<skill-name>/SKILL.md
 ```
 
-Enable them in an agent scope or profile with the single-line form:
+Enable them at top level, in a procedure, or in a profile:
 
 ```kedi
-> use: skills
+> skills: enabled
 ```
+
+Use the expanded form to configure discovery:
+
+```kedi
+> skills:
+    enabled: true
+    cwd: workspace
+    max_skills: 40
+    include_registry: true
+    include_all: false
+    exclude_paths: `["~/.agents/skills"]`
+```
+
+Fields:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | required in expanded form | Enables or disables inherited skill discovery. |
+| `cwd` | program source directory | Base directory used for the project-local `.agents/skills` source. Relative paths resolve from the program source directory. |
+| `max_skills` | `20` | Maximum number of skill names exposed by this scope; valid range is 1 through 100. |
+| `include_registry` | `true` | Includes `$KEDI_HOME/registry/skills` (normally `~/.kedi/registry/skills`). |
+| `include_all` | `false` | When false, use the first source containing valid skills. When true, merge all sources while retaining precedence for duplicate names. |
+| `exclude_paths` | `[]` | Files or directories excluded after `~` and relative-path resolution. Use an inline Python list. |
+
+Sources are considered in this order:
+
+1. `$KEDI_HOME/registry/skills`;
+2. `<cwd>/.agents/skills`;
+3. `~/.agents/skills`.
+
+With `include_all: true`, names are merged and sorted for deterministic listing.
+If the same name exists in more than one source, `read_skill` reads the copy
+from the highest-priority source. `include_registry: false` removes only the
+first source. `exclude_paths` can remove an entire source or one skill path.
 
 This registers two read-only agent tools:
 
 - `list_skills(all: bool = false, limit: int = 20)` returns available skill
-  identifiers in deterministic order.
+  identifiers in deterministic order. Source merging is controlled by
+  `include_all`; the `all` argument is retained for API compatibility.
 - `read_skill(skill_name: str)` returns the exact UTF-8 `SKILL.md` content for
   one listed identifier.
 
 Skill instructions are never inserted into the model context automatically.
 The agent must first list relevant skills, then explicitly read the one it
 needs. Skill names are limited to one directory name; path traversal, absolute
-paths, symlink escapes, and oversized files are rejected. `all` is reserved for
-future source selection and currently reads the same project-local directory.
+paths, symlink escapes, and files larger than 256 KiB are rejected.
 
-`> use: skills` works inside a profile too. The multiline `> use:` form remains
-a procedure-tool list, so it does not enable skills.
+`> use:` remains exclusively a procedure-tool or profile-selection directive.
+It does not enable skills. A real procedure or profile named `skills` retains
+normal `> use: skills` behavior.
+
+Install a local or GitHub-hosted one-file skill into the user Kedi registry:
+
+```bash
+kedi skills add --path ~/my-skill
+kedi skills add --repo owner/skill-repository
+```
+
+The source directory or repository must contain `SKILL.md` at its root. Kedi
+copies only that file into `~/.kedi/registry/skills/<name>/SKILL.md`. Repository
+input is the credential-free `OWNER/REPOSITORY` form and records the checked-out
+commit. Installation never writes into the current project.
 
 ### Large values and artifacts
 
@@ -1767,7 +1811,8 @@ Rules:
   `query` and `bind` apply it only to that callable's registered tools.
 - `skills=True` on `kedi.configure`, `kedi.context`, `@kedi.query`, or
   `@kedi.bind` enables the same explicit `list_skills` / `read_skill` tools as
-  `> use: skills`.
+  `> skills: enabled`. Pass `SkillsSettings(...)` instead of `True` to configure
+  the same source, limit, and exclusion policy from Python.
 - Artifact handling is enabled by default. A mapping such as
   `artifacts={"threshold": "100kb", "ttl": "1h"}` applies the same policy
   fields as `> artifacts:`. Pass `artifacts=False` in a nested
@@ -2368,8 +2413,8 @@ The system will:
 3. Cache the implementation in `source.cache.kedi`
 
 Unknown `>` directives will raise a directive error. Valid directives include
-`auto`, `data`, `test_data`, `metric`, `optimize`, `model`, `effort`, `system`, `mcp`,
-`profile`, `use`, `import`, and `export`.
+`auto`, `data`, `test_data`, `metric`, `optimize`, `model`, `effort`, `skills`,
+`system`, `mcp`, `profile`, `use`, `import`, and `export`.
 
 ## Complete Example with Explanations
 
