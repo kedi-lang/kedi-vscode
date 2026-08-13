@@ -2292,6 +2292,15 @@ reads, releases, expiry, cleanup, quota rejection, and context bytes avoided.
 Pydantic AI instrumentation is enabled by default; HTTPX instrumentation is an
 explicit opt-in.
 
+History telemetry uses `process history` for deterministic Kedi history
+selection after the configured threshold is reached and `compact history` for
+an actual native or Kedi-owned compaction attempt. Merely configuring native
+compaction does not create a span. Compaction spans report message and token
+counts, reduction ratio, retained-prefix validation, checkpoint state, and
+cache-epoch changes without recording history, summaries, checkpoint IDs, or
+artifact IDs. Cache-read and cache-write token usage remains on the agent/model
+telemetry and is not counted again as compaction usage.
+
 The default privacy policy does not capture prompt/output content, binary
 content, source paths or snippets, model request parameters, tool definitions,
 exception messages, or stack traces. Each class requires its own explicit
