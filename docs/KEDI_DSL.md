@@ -1106,14 +1106,65 @@ enable scoped skill discovery.
   adapter exposes it. Cache-write tokens describe the cached portion of the
   logical input and are not an additional input-token category.
 
-  ACP commands may also come from CLI/env:
+  CodeMode is an explicit Kedi-owned capability directive:
 
   ```kedi
-  > agent: acp
+  > adapter: pydantic
+  > codemode: enabled
   ```
 
-  If `command` is omitted, Kedi reads `KEDI_ACP_AGENT_COMMAND`; the CLI
-  `--acp-command` option writes the same environment value for the process.
+  The expanded form enables CodeMode and configures its bounded discovery and
+  execution surface. `enabled` is optional in the block and defaults to `true`:
+
+  ```kedi
+  > codemode:
+      default_search_limit: 10
+      max_search_limit: 50
+      max_hydrated_tools: 32
+      max_nested_calls: 48
+      max_concurrent_calls: 8
+      request_timeout: 60
+  ```
+
+  It replaces the model-facing application tool catalog with
+  `search_tools`, `get_tool_schema`, and `execute_code`. Search returns only
+  exact tool names and an opaque pagination cursor. Schema hydration makes
+  selected tools callable inside a per-run Monty sandbox; only hydrated tools
+  may execute. The sandbox preserves Kedi argument validation, approval,
+  required-tool tracking, tool telemetry, sequential constraints, and local
+  MCP lifecycle behavior. Nested tool outputs remain outside model history
+  while code filters or aggregates them. Only the final `execute_code` result
+  crosses normal artifact admission.
+
+  Monty language failures return captured standard output and the traceback
+  message as separate fields, for example
+  `{"output": "loaded 3 rows", "error": "AttributeError: ..."}`. Output emitted
+  before the failure therefore remains available for recovery without being
+  mixed into the traceback. Variables assigned before the failure remain in
+  the run's sandbox. Application-tool failures, approval denials, and Kedi
+  execution limits remain failed tool calls rather than successful sandbox
+  results.
+
+  CodeMode is disabled by default. It supports Pydantic AI, LangChain, Claude
+  Agent SDK, and Codex App Server; DSPy remains unsupported. All four paths use
+  the same control names, Monty subset, limits, approval composition, and
+  artifact boundary. CodeMode requires inline Kedi approval resolution because
+  a deferred approval cannot safely suspend and replay a partially executed
+  snippet.
+
+  Pydantic local `MCPToolset` tools, LangChain `MultiServerMCPClient` tools,
+  and Claude-declared stdio/SSE/HTTP MCP tools are materialized into the
+  CodeMode catalog. Pydantic provider-native MCP is rejected, and Codex MCP
+  remains unsupported by that adapter. Claude and Codex keep their own
+  filesystem, shell, and other harness control-plane tools native; CodeMode
+  hides application tools, not the harness controls needed to operate them.
+  `> codemode:` is lexical and may appear at top level, inside a profile, or
+  inside a procedure. `> settings:` accepts only adapter/model settings and
+  does not accept `codemode`.
+
+  ACP always requires an explicit stdio command, either in multiline
+  `> agent:` syntax or through `ACPAdapter(command=...)`. Kedi does not resolve
+  ACP commands from CLI options or environment variables.
 - Multiline `> system:` bodies are newline-joined like `>>` blocks, but they
   are read-only: literal text, `<name>` substitutions, and inline Python
   substitutions such as ``<`args.name`>`` are allowed; LLM outputs and procedure
@@ -1908,6 +1959,38 @@ adapter = PydanticAdapter(model)
 This bridge requires Python 3.11+ and `codex-auth-helper==1.6.1`, installed with
 `uv add 'kedi[codex-model]'`. Authentication comes from the user's Codex login;
 Kedi does not accept or persist a second token for this path.
+
+Enable the Kedi-owned CodeMode capability from any supported adapter
+constructor. Native Pydantic runs additionally expose a single-run capability:
+
+```python
+from kedi.agent_adapter import (
+    PydanticAdapter,
+    PydanticCodeModeCapability,
+)
+
+adapter = PydanticAdapter(model, codemode=True)
+
+# Equivalent for one native Pydantic run:
+result = adapter.run_sync(
+    "Inspect the available tools and complete the task.",
+    capabilities=[PydanticCodeModeCapability()],
+)
+```
+
+The capability wraps the fully assembled Pydantic toolset, including
+constructor tools, caller toolsets, active Kedi tools, and local MCP tools.
+Application schemas are disclosed only after an exact `get_tool_schema` call.
+The Monty session is isolated to one agent run, persists across that run's
+model steps, supports `restart=True`, and closes on success, error, early close,
+or cancellation. Native provider tools that are not ordinary callable toolset
+members remain framework-owned; provider-native MCP is rejected while CodeMode
+is active.
+
+`LangChainAdapter`, `ClaudeAdapter`, and `CodexAdapter` accept the same
+`codemode=True` constructor argument. The native `PydanticCodeModeCapability`
+class is intentionally Pydantic-specific; the DSL and adapter-level behavior
+are not.
 
 Use the public adapter-specific converters when a native Pydantic agent needs
 Kedi `ToolSpec` values:
