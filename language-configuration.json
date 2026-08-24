@@ -57,7 +57,7 @@
       }
     },
     "indentationRules": {
-    "increaseIndentPattern": "^\\s*@[A-Za-z_][A-Za-z0-9_]*.*:$|^\\s*(=|\\[[A-Za-z_][A-Za-z0-9_]*\\s*(?::\\s*[A-Za-z_][A-Za-z0-9_\\[\\]]*)?\\])\\s*=\\s*```\\s*$|^\\s*```\\s*$",
+    "increaseIndentPattern": "^\\s*@[A-Za-z_][A-Za-z0-9_]*.*:$|^\\s*>\\s*(?:if\\s*:.*|else\\s*:|loop(?:\\s+\\[[A-Za-z_][A-Za-z0-9_]*\\])?\\s*:.*)\\s*$|^\\s*(=|\\[[A-Za-z_][A-Za-z0-9_]*\\s*(?::\\s*[A-Za-z_][A-Za-z0-9_\\[\\]]*)?\\])\\s*=\\s*```\\s*$|^\\s*```\\s*$",
     "decreaseIndentPattern": "^\\s*```\\s*$"
     },
     "wordPattern": "[A-Za-z_][A-Za-z0-9_]*"

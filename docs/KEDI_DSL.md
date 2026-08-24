@@ -329,6 +329,61 @@ You can use backtick-wrapped Python expressions in type annotations:
 
 Backtick type annotations are evaluated at runtime with full access to prelude, globals, and local scope. They work identically to regular type annotations.
 
+## Native Control Flow
+
+Kedi provides deterministic conditionals and sequential loops. Their
+headers are embedded Python evaluated through the configured executor; they do
+not invoke a model.
+
+### Conditional branches
+
+```kedi
+[score: int] = `72`
+
+> if: `score >= 60`:
+  [result] = passed
+> else:
+  [result] = failed
+
+= <result>
+```
+
+The condition is evaluated exactly once and must return an exact Python
+`bool`. Kedi does not apply truthiness to integers, strings, containers, or
+other objects. The closing `:` after the embedded Python expression is required.
+Only the selected body executes, and writes from that body stay visible in the
+containing Kedi scope. `> else:` is optional. There is no
+`elif`; use a nested `> if:` when another condition is required.
+
+Directives selected inside a branch apply only within that branch. Existing
+Kedi return behavior remains unchanged: a return in a selected body contributes
+to the scope's last return value; it does not introduce Python-style early
+return.
+
+### Sequential loops
+
+```kedi
+[items: list[int]] = `[1, 2, 3, 4, 5]`
+[total: int] = `0`
+
+> loop [n]: `items`:
+  `total += n`
+
+= `total`
+```
+
+The header expression is evaluated exactly once and must return an `Iterable`.
+Iterations run sequentially in source order. Kedi does not materialize the
+iterable or introduce implicit parallelism, so lists, tuples, dictionaries,
+strings, generators, ranges, and custom iterables preserve their native
+iteration behavior.
+
+The binder receives each yielded value without coercion. If its name was
+already bound, Kedi restores the previous value after the loop. Otherwise Kedi
+removes the binder. Restoration also happens when the body raises or is
+cancelled, and nested loops may safely shadow the same binder. Other writes
+made by the body remain visible after the loop.
+
 ## Procedures
 
 ### Basic Procedures
@@ -990,7 +1045,7 @@ enable scoped skill discovery.
   DeepSeek, Z.AI, and xAI require no request flag for their implicit cache.
   Moonshot and Azure receive only their supported stable routing key. Bedrock
   receives explicit framework-native cache points; with LangChain this requires
-  the provider's `langchain-aws` integration package. Preconstructed LangChain
+  the `kedi[langchain-aws]` optional dependency group. Preconstructed LangChain
   `ChatOpenAI` models using the official Moonshot, Alibaba, DeepSeek, or Z.AI
   base URLs are recognized without changing their configured endpoint.
 
@@ -1467,6 +1522,9 @@ This registers two read-only agent tools:
 - `read_skill(skill_name: str)` returns the exact UTF-8 `SKILL.md` content for
   one listed identifier.
 
+Names outside the active scope's deterministic `max_skills` set cannot be read
+by guessing their identifiers.
+
 Skill instructions are never inserted into the model context automatically.
 The agent must first list relevant skills, then explicitly read the one it
 needs. Skill names are limited to one directory name; path traversal, absolute
@@ -1892,6 +1950,42 @@ def extract_output(*, text: str, output_type: type[T]) -> T:
     """
     ...
 ```
+
+Low-level adapters expose the same structured-output operation directly through
+`produce()` / `produce_sync()`. Here, `template` is ordinary prompt text; it does
+not need to contain Kedi output placeholders. Pass either a field mapping through
+`output_schema` or one prebuilt Python type through `output_type`:
+
+```python
+from typing import Annotated
+
+from pydantic import BaseModel
+
+
+class Review(BaseModel):
+    accepted: bool
+    reason: str
+
+
+fields = await adapter.produce(
+    template="Evaluate whether this proposal is safe.",
+    output_schema={
+        "accepted": Annotated[bool, "Whether the proposal is safe"],
+        "reason": Annotated[str, "Short justification for the decision"],
+    },
+)
+review = await adapter.produce(
+    template="Evaluate whether this proposal is safe.",
+    output_type=Review,
+)
+```
+
+For `output_schema`, `Annotated[type, "description"]` keeps `type` as the field
+type and publishes the second argument as the model-facing field description.
+Adapters with structured-output support accept both forms; supplying a schema
+takes precedence over a prebuilt type. An adapter must receive at least one output
+specification. ACP currently advertises no structured-output capability, so its
+`produce()` surface raises `NotImplementedError` for either form.
 
 ### `@kedi.bind`
 
