@@ -303,6 +303,33 @@ return sum([1, 2, 3])
 ```
 ```
 
+`=` declares a value in the current lexical scope. If a containing scope
+already owns the same name, the new declaration shadows it; it does not update
+the outer binding. Branch and loop-iteration declarations disappear when their
+scope finishes.
+
+Use `:=` to update the nearest visible Kedi binding:
+
+```kedi
+[count: int] = `0`
+
+> if: `True`:
+  [count] := `count + 1`
+
+= `count`
+```
+
+`:=` does not declare names and does not accept a new type annotation. The
+target must already exist, and the value is validated against the target's
+original type contract. A fenced Python result is also supported:
+
+```kedi
+[total: int] = `0`
+[total] := ```
+return sum([1, 2, 3])
+```
+```
+
 #### Inline Python Type Annotations
 
 You can use backtick-wrapped Python expressions in type annotations:
@@ -340,11 +367,12 @@ colon is a Kedi template claim evaluated by the active agent adapter.
 
 ```kedi
 [score: int] = `72`
+[result] = pending
 
 > if: `score >= 60`:
-  [result] = passed
+  [result] := passed
 > else:
-  [result] = failed
+  [result] := failed
 
 = <result>
 ```
@@ -352,8 +380,10 @@ colon is a Kedi template claim evaluated by the active agent adapter.
 The condition is evaluated exactly once and must return an exact Python
 `bool`. Kedi does not apply truthiness to integers, strings, containers, or
 other objects. The closing `:` after the embedded Python expression is required.
-Only the selected body executes, and writes from that body stay visible in the
-containing Kedi scope. `> else:` is optional. There is no
+Only the selected body executes. Each selected branch receives a child value
+scope: Kedi initializations remain branch-local, while embedded Python may
+update a binding that already exists in a containing scope. Python-only names
+never become Kedi bindings. `> else:` is optional. There is no
 `elif`; use a nested `> if:` when another condition is required.
 
 Directives selected inside a branch apply only within that branch. Existing
@@ -366,11 +396,12 @@ return.
 ```kedi
 [city] = Ankara
 [minimum_population: int] = `5_000_000`
+[result] = unknown
 
 > if: <city> has more than `minimum_population` residents
-  [result] = major city
+  [result] := major city
 > else:
-  [result] = smaller city
+  [result] := smaller city
 
 = <result>
 ```
@@ -418,8 +449,10 @@ The trailing colon is the unambiguous boundary between both forms:
 ```
 
 The deterministic condition is re-evaluated before every iteration and must
-return an exact `bool`. A false first result runs zero iterations. Body writes
-remain visible to the next condition evaluation.
+return an exact `bool`. A false first result runs zero iterations. Every body
+execution receives a fresh child value scope. State needed by the next
+condition must update an existing outer binding through Python write-back or
+`:=`; a body-local Kedi initialization is discarded after that iteration.
 
 Template claims use the same no-trailing-colon form and are re-rendered and
 classified before every iteration:
@@ -452,13 +485,54 @@ The header expression is evaluated exactly once and must return an `Iterable`.
 Iterations run sequentially in source order. Kedi does not materialize the
 iterable or introduce implicit parallelism, so lists, tuples, dictionaries,
 strings, generators, ranges, and custom iterables preserve their native
-iteration behavior.
+iteration behavior. If the iterator exposes `close()`, Kedi calls it when
+traversal finishes or exits early because the loop body failed.
 
-The binder receives each yielded value without coercion. If its name was
-already bound, Kedi restores the previous value after the loop. Otherwise Kedi
-removes the binder. Restoration also happens when the body raises or is
-cancelled, and nested loops may safely shadow the same binder. Other writes
-made by the body remain visible after the loop.
+The binder receives each yielded value without coercion. Every iteration owns
+a fresh child scope containing its binder and body-local Kedi declarations.
+That scope is discarded after the iteration unless an attached map stage still
+needs it. Outer values change only through `:=` or owner-aware Python
+write-back; mutating an outer object, such as appending to a list, naturally
+updates that object.
+
+### Map continuations
+
+An iterable loop may be followed immediately by one sibling `> map:` clause:
+
+```kedi
+[selected: list[str]] = `[]`
+
+> loop [candidate]: `candidates`:
+  >> Determine whether <candidate> qualifies as [qualified: bool] and extract [email].
+> map:
+  > if: `qualified`:
+    `selected.append(email)`
+
+= `selected`
+```
+
+`map` is a continuation stage, not Python's collection-producing `map()`.
+Kedi first traverses the iterable and starts every loop-body job. It then
+schedules one map continuation for each retained iteration scope. A
+continuation sees that iteration's binder, declarations, template outputs, and
+the containing scopes; values from different iterations cannot overwrite one
+another.
+
+The stage uses the configured execution engine. In sequential mode,
+continuations complete in source order. With a parallel engine, independent
+records may finish out of order, and each continuation waits for the promises
+owned by its own record. Kedi joins the full map stage before continuing after
+the loop and drains all scheduled continuations before surfacing the first
+failure.
+
+Parallel map continuations may overlap. Source-order side effects and atomic
+read-modify-write operations are not implied: shared aggregates must use
+operations or synchronization appropriate for the active execution engine.
+
+V1 permits one map clause, attached only to an immediately preceding
+binder-based iterable loop. It has no binder and creates no implicit result
+collection. An orphan map, a map after a conditional loop, or a second chained
+map is a parse error.
 
 ## Procedures
 
@@ -596,7 +670,7 @@ result = math.pi * x  # WRONG: fences not indented
 Rules:
 - Opening/closing fences must be alone on their lines (no inline `` ```python code``` ``)
 - Code must match the surrounding Kedi indentation level
-- Variables in scope are injected, and reassignments to those **existing** Kedi variables reflect back. New names created inside the block stay local to the block and do **not** leak into Kedi scope — assign to an existing Kedi variable (or use a value-returning block) to surface a result.
+- Variables in scope are injected, and reassignments to those **existing** Kedi variables reflect back to their nearest lexical owner after all changed values pass their Kedi type contracts. New names created inside the block stay local to the block and do **not** leak into Kedi scope — assign to an existing Kedi variable (or use a value-returning block) to surface a result.
 - The code is dedented relative to its indentation level before execution
 
 #### Kedi variables are Python *globals*
