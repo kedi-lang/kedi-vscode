@@ -1003,7 +1003,7 @@ Dataset items can follow two conventions:
 ## Agent Profiles and Tools
 
 Kedi routes LLM calls through agent adapters. Use `> adapter:`, `> agent:`,
-`> model:`, `> effort:`, `> approval:`, `> skills:`, `> system:`, `> mcp:`, `> profile:`, and `> use:`
+`> model:`, `> effort:`, `> approval:`, `> hooks:`, `> skills:`, `> system:`, `> mcp:`, `> profile:`, and `> use:`
 to choose adapter implementations, choose models, set reasoning effort, set
 agent instructions, load MCP tools, expose Kedi procedures as agent tools, and
 enable scoped skill discovery.
@@ -1120,6 +1120,52 @@ enable scoped skill discovery.
   call arguments. Approval requests do not currently include a call reason, so
   the model judges with limited information. This helper is experimental and is
   not a stable feature.
+- `> hooks:` registers Python lifecycle handlers for subsequent agent runs:
+
+  ````kedi
+  ```
+  from kedi import PreToolUseDecision, UserPromptSubmitDecision
+
+  def redact_prompt(event):
+      return UserPromptSubmitDecision.edit(
+          event.content.replace("customer@example.com", "[email]")
+      )
+
+  def constrain_write(event):
+      if event.tool_name != "write_report":
+          return None
+      return PreToolUseDecision.edit(
+          {**event.arguments, "path": "reports/output.md"}
+      )
+  ```
+
+  > hooks:
+      user_prompt_submit: `redact_prompt`
+      pre_tool_use: `constrain_write`
+  ````
+
+  The supported events are `user_prompt_submit`, `pre_tool_use`,
+  `post_tool_use`, and `post_tool_use_failure`. Prompt and pre-tool handlers
+  may return a typed `continue`, `deny`, or `edit` decision. Post handlers are
+  observers and must return `None`. Tool arguments are canonicalized before
+  `pre_tool_use`; an edit is validated again before approval and execution.
+  A denied prompt never reaches the model, and a denied tool never executes.
+  `post_tool_use_failure` is emitted only after tool execution starts. Its event
+  records the observed execution duration and whether execution was interrupted;
+  pre-hook and approval denials are not execution failures.
+
+  Handlers run in registration/source order. Each edit becomes the next
+  handler's input, and denial stops the chain. Adapter-instance handlers run
+  before lexical/profile handlers. Direct top-level, procedure, and Python API
+  hook policy is inherited by subagents as runtime enforcement; hooks declared
+  only inside a child profile remain local to that profile.
+
+  `> hooks: disabled` disables inherited lexical/profile handlers in that
+  scope. It does not remove handlers explicitly registered on an adapter
+  instance. Hook support is event-specific: Pydantic AI, LangChain, Claude,
+  Codex, and WebGPU support all four events; ACP supports only
+  `user_prompt_submit`; DSPy does not support this surface. Unsupported events
+  fail before model transport and are reported by the LSP.
 - `> system: text` — set active agent instructions for subsequent procedure
   captures and prompt calls.
 - `> history: enabled|disabled` — control whether model calls in the current
@@ -2080,6 +2126,28 @@ Rules:
   dynamic policy, equivalent to configuring that handler for subsequent calls.
   An explicit `approval=` on `query`, `bind`, or `kedi.context(...)` takes
   precedence in that scope.
+- `@kedi.on("event")` registers a lifecycle handler in the current Python API
+  configuration. The first argument may be one event name or a sequence, so
+  one observer can handle multiple events. Adapter instances expose the same
+  decorator through `@adapter.on(...)`; their constructors also accept one
+  catch-all `hook_handler=` callable.
+
+  ```python
+  import kedi
+
+
+  @kedi.on(("post_tool_use", "post_tool_use_failure"))
+  def audit_tool_terminal_event(event):
+      record(event.event, event.tool_name, event.tool_call_id)
+  ```
+
+  Events include `run_id`, monotonic per-run `sequence`, adapter identity, and
+  optional parent/agent/profile identity. Tool events additionally include
+  `tool_call_id`, logical/native names, origin, immutable arguments,
+  description, and immutable metadata. Success events carry `result`; failure
+  events carry the exception type and message, observed execution duration,
+  and interruption state. These payloads are available to handlers but are
+  excluded from event repr and default telemetry.
 
 Dynamic output types can be passed as normal Python values:
 
@@ -2547,8 +2615,9 @@ The following state is rejected rather than silently dropped or changed:
 - arbitrary Python callables, classes, generators, file/socket handles,
   threads, locks, tasks, futures, and unknown object instances;
 - shared or cyclic mutable object graphs whose identity would be lost;
-- dynamic approval handlers, process-bound tool/profile bindings, active
-  artifacts, conversation turns, and adapter-native continuation state;
+- dynamic approval handlers, non-importable lifecycle hook handlers,
+  process-bound tool/profile bindings, active artifacts, conversation turns,
+  and adapter-native continuation state;
 - imports and inline Python preludes, because rebuilding them would rerun
   module or Python initialization;
 - runtime-scoped procedure/type declarations and type defaults that require
@@ -2569,10 +2638,16 @@ session = kedi.load_session(
 defaults to `InteractiveSession`. Pass an `InteractiveSession` subclass when
 the restored object needs application-specific session behavior.
 
-`dump()` also rejects an executing or closed session. Loading never executes
-the old top-level initializations, template calls, tool calls, or other side
-effects; only source-backed declarations are compiled before saved values are
-installed.
+Lifecycle hooks use module and qualified-name descriptors rather than pickle.
+Only importable top-level functions are restorable; lambdas, local functions,
+closures, bound methods, and handlers from `__main__` reject the dump. Load only
+trusted snapshots: resolving a hook imports its Python module and may run that
+module's ordinary import-time code, although the hook itself is not called.
+
+`dump()` also rejects an executing or closed session. Apart from resolving
+documented import-addressable hooks, loading never executes old top-level
+initializations, template calls, tool calls, or other side effects; only
+source-backed declarations are compiled before saved values are installed.
 
 Interactive fragments do not accept package metadata, export directives, or
 `@test`/`@eval` suites. Those constructs describe whole files or package/test
