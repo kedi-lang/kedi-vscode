@@ -50,7 +50,7 @@ A Kedi program consists of:
 - **Imports and exports**: Explicit module boundaries for sharing procedures, types, and values across `.kedi` files
 - **Template blocks** (`>>`): LLM prompts with embedded substitutions and outputs
 - **Procedures**: Reusable named blocks of code
-- **Assignments**: Variable initialization and storage
+- **Variables**: Explicit initialization and assignment
 - **Returns**: Values returned from procedures or top-level
 - **Python blocks**: Embedded Python code for computation
 - **Comments**: Inline and block comments for documentation
@@ -280,24 +280,24 @@ Use backticks only when the type itself must come from runtime Python state:
 >> Extract [value: `output_type`].
 ```
 
-### Variable Assignment
+### Variable Initialization and Assignment
 
-Variables can be assigned using output syntax on the left side:
+Use `=` to initialize a variable in the current lexical scope:
 
 ```kedi
-# Simple assignment
+# Simple initialization
 [prev] = <current>
 
-# Typed assignment
+# Typed initialization
 [count: int] = `5`
 
-# Typed assignment with inline Python type annotation
+# Typed initialization with inline Python type annotation
 [count: `int`] = `5`
 
-# String assignment from expression
+# String initialization from an expression
 [message] = Hello <name>
 
-# Assignment from Python block
+# Initialization from a Python block
 [total: int] = ```
 return sum([1, 2, 3])
 ```
@@ -308,7 +308,7 @@ already owns the same name, the new declaration shadows it; it does not update
 the outer binding. Branch and loop-iteration declarations disappear when their
 scope finishes.
 
-Use `:=` to update the nearest visible Kedi binding:
+Use `:=` to assign a new value to the nearest visible Kedi binding:
 
 ```kedi
 [count: int] = `0`
@@ -412,18 +412,9 @@ with the same native Kedi semantics used by other templates. Output fields such
 as `[answer]` are invalid because a condition does not produce a user-visible
 binding.
 
-Kedi asks the active adapter for an exact annotated `bool` using this request:
-
-```text
-Return true only if the following claim can be established as true from the available context; otherwise return false.
-Claim: {rendered claim}
-```
-
-The call inherits the active profile, model settings, system instructions,
-tools, MCP servers, history, caching, usage limits, cancellation, retries,
-streaming, and telemetry. If the claim cannot be established from that context,
-the adapter must return `false`. No synthetic condition result is written to
-`KediEnv`.
+Kedi evaluates the rendered claim using the current agent profile and its
+available context. A claim that cannot be established is treated as `false`.
+The evaluation does not create a Kedi binding.
 
 The trailing colon is the unambiguous boundary between both forms:
 
@@ -670,7 +661,7 @@ result = math.pi * x  # WRONG: fences not indented
 Rules:
 - Opening/closing fences must be alone on their lines (no inline `` ```python code``` ``)
 - Code must match the surrounding Kedi indentation level
-- Variables in scope are injected, and reassignments to those **existing** Kedi variables reflect back to their nearest lexical owner after all changed values pass their Kedi type contracts. New names created inside the block stay local to the block and do **not** leak into Kedi scope — assign to an existing Kedi variable (or use a value-returning block) to surface a result.
+- Variables in scope are injected, and assignments to those **existing** Kedi variables reflect back to their nearest lexical owner after all changed values pass their Kedi type contracts. New names created inside the block stay local to the block and do **not** leak into Kedi scope — assign to an existing Kedi variable (or use a value-returning block) to surface a result.
 - The code is dedented relative to its indentation level before execution
 
 #### Kedi variables are Python *globals*
@@ -785,7 +776,7 @@ return Person(name="Bob", age=25, email="bob@example.com")
 [team: `Team`] = `Team(name="Eagles", scores=[10, 20, 30], members={"Alice": 10, "Bob": 20})`
 ````
 
-Fields without type annotations default to `str`. You can use backtick-wrapped type expressions in field definitions, parameters, returns, and variable assignments. The expressions are evaluated at runtime with access to prelude, globals, and local scope.
+Fields without type annotations default to `str`. You can use backtick-wrapped type expressions in field definitions, parameters, returns, and variable initializations. The expressions are evaluated at runtime with access to prelude, globals, and local scope.
 
 Kedi's built-in type namespace includes common Python and typing types such as `str`,
 `int`, `list`, `dict`, `Union`, `Optional`, `Literal`, `Annotated`, plus
@@ -2579,7 +2570,7 @@ defaults to `InteractiveSession`. Pass an `InteractiveSession` subclass when
 the restored object needs application-specific session behavior.
 
 `dump()` also rejects an executing or closed session. Loading never executes
-the old top-level assignments, template calls, tool calls, or other side
+the old top-level initializations, template calls, tool calls, or other side
 effects; only source-backed declarations are compiled before saved values are
 installed.
 
@@ -2858,7 +2849,7 @@ def format_result(value):
     return f"==> {value} <=="
 ```
 
-# Top-level typed variable assignments
+# Top-level typed variable initializations
 [threshold: float] = `0.5`
 [max_items: int] = `10`
 
