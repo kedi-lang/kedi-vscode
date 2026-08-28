@@ -2688,7 +2688,9 @@ delimiter, inline expression, or Python fence, the editor keeps accepting
 input. `Alt+Enter` forces submission so an invalid fragment can be returned to
 the parser and diagnosed. After execution or an error, the REPL returns to the
 normal `+++` line mode. Meta commands inside the multiline editor are treated
-as Kedi source rather than terminal commands.
+as Kedi source rather than terminal commands. Terminal copy and paste is
+supported; pasted newlines, indentation, and blank lines remain part of the
+fragment and do not submit it. Press Enter twice after pasting to execute it.
 
 `kedi --idle --highlight` enables live syntax highlighting for Kedi and
 embedded Python input. Highlighting is optional, does not start a language
