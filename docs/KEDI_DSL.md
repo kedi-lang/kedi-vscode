@@ -2665,7 +2665,7 @@ $ kedi --idle
 ( o.o )
  > ^ <
 Kedi 0.4.0 on darwin
-Type "help" for interactive help, ":show" to inspect a value, ":dump" to save, or ":exit" to leave.
+Type "help" for interactive help, ":show" to inspect a value, ":multiline" for a multiline fragment, ":dump" to save, or ":exit" to leave.
 +++ [base: int] = `40`
 +++ @add_two() -> int:
 ...     = `base + 2`
@@ -2680,6 +2680,21 @@ line continuation switches the next prompt to `... `. Tab inserts indentation
 at that prompt. An empty continuation line submits the complete buffered
 fragment; it is then executed exactly once. Simple complete lines execute
 immediately.
+
+`:multiline` opens a one-shot multiline editor even when the first line would
+be a complete fragment. Press Enter once to start an empty line and Enter again
+to submit the complete fragment. If the fragment still has an open block,
+delimiter, inline expression, or Python fence, the editor keeps accepting
+input. `Alt+Enter` forces submission so an invalid fragment can be returned to
+the parser and diagnosed. After execution or an error, the REPL returns to the
+normal `+++` line mode. Meta commands inside the multiline editor are treated
+as Kedi source rather than terminal commands.
+
+`kedi --idle --highlight` enables live syntax highlighting for Kedi and
+embedded Python input. Highlighting is optional, does not start a language
+server, and falls back to plain input for unusually large fragments so typing
+remains responsive. Highlighted, multiline, and ordinary input share the same
+REPL history.
 
 `:show <expression>` is a terminal-only meta command, not Kedi syntax. It
 evaluates any expression accepted on the right-hand side of a Kedi return and
@@ -2715,7 +2730,7 @@ Readline history is stored in `~/.kedi_history`; set `KEDI_HISTORY` to
 choose another path. Adapter selection remains available through
 `--adapter` and `--adapter-model`. Interactive mode does not accept a source
 file, `-c/--command`, program arguments, or test/eval/optimization modes.
-`--record` and `--load` are valid only with `--idle`.
+`--record`, `--load`, and `--highlight` are valid only with `--idle`.
 
 For a dynamic policy, decorate a Python handler and return one explicit
 decision. The decorator registers it as the default policy. Kedi passes an
