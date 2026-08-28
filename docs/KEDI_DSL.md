@@ -1160,6 +1160,11 @@ enable scoped skill discovery.
   hook policy is inherited by subagents as runtime enforcement; hooks declared
   only inside a child profile remain local to that profile.
 
+  The final prompt produced by `user_prompt_submit` is canonical for that turn:
+  model transport, request budgeting, telemetry, cache identity, and stateful
+  history all observe the same edited value. The pre-hook value is not retained
+  as a parallel history entry.
+
   `> hooks: disabled` disables inherited lexical/profile handlers in that
   scope. It does not remove handlers explicitly registered on an adapter
   instance. Hook support is event-specific: Pydantic AI, LangChain, Claude,
@@ -1191,11 +1196,17 @@ enable scoped skill discovery.
 
   The policy is valid at top level, inside procedures, and in profiles. It is
   lexical like the other profile directives, and a nested `disabled` policy
-  overrides an inherited `enabled` policy. Failed or cancelled calls do not
-  commit a partial turn.
+  overrides an inherited `enabled` policy. Failed, cancelled, or early-closed
+  native iterator/stream calls do not commit a partial turn. Successful
+  prompt/result history, adapter continuation, cleanup ownership, and cache-epoch
+  changes commit atomically. In parallel execution, calls sharing one
+  conversation execute their complete stateful transactions in source order;
+  independent conversation sessions may still run concurrently.
 
-  History is partitioned by adapter. Switching adapters in one Kedi session
-  starts or resumes that adapter's own lane rather than translating private
+  History is partitioned by concrete adapter and compatible configuration lane.
+  Switching adapter, model, relevant settings, MCP configuration, or tool
+  contract starts a fresh native continuation lane rather than feeding an
+  incompatible checkpoint to the next call. Kedi does not translate private
   provider messages across frameworks. Pydantic AI and LangChain replay their
   complete portable message sequences, including tool calls and tool results.
   Claude uses its native resumable session. Codex starts a non-ephemeral App
@@ -1301,6 +1312,17 @@ enable scoped skill discovery.
   semantic summarizer that will produce those checkpoints is tracked in
   [issue #80](https://github.com/kedi-lang/kedi/issues/80); `kedi` is not yet a
   public `compaction_mode` value.
+
+  Tool calls and tool results remain native causal messages in adapter history;
+  Kedi does not flatten them into user-prompt text. `stateful_history` means an
+  adapter can continue successful turns. `history_replay` additionally means
+  Kedi can inspect and replay the adapter's complete message representation.
+  `native_artifacts` is separate again: it is true only when adapter-native and
+  MCP tool results are guaranteed to cross Kedi's artifact-admission boundary.
+  Pydantic AI and LangChain provide that guarantee. Their native tool results
+  are admitted before model-visible history is committed, while native tool-call
+  IDs, error results, approval flow, and existing Kedi artifact wrappers remain
+  intact.
 - `> settings:` — set active model configuration for subsequent procedure
   captures and prompt calls. Values are `name: value` lines; plain values are
   parsed as simple scalars (`true`, `false`, numbers, `null`) and backtick
@@ -1998,15 +2020,15 @@ manager. A DSL `> history: enabled` conversation is bounded by its
 All artifact-aware adapters use the same compact ref and management-tool
 schemas. Stateful replay is a separate capability:
 
-| Adapter | Compact artifacts | Stateful history |
-| --- | --- | --- |
-| Pydantic AI | Yes | Yes |
-| Claude Agent SDK | Yes | Yes |
-| Codex App Server | Yes | Yes |
-| LangChain | Yes | Yes |
-| DSPy | Yes | No |
-| WebGPU | Yes | No |
-| ACP | No | No |
+| Adapter | Compact Kedi artifacts | Native/MCP admission | Stateful history |
+| --- | --- | --- | --- |
+| Pydantic AI | Yes | Yes | Yes |
+| Claude Agent SDK | Yes | No | Yes |
+| Codex App Server | Yes | No | Yes |
+| LangChain | Yes | Yes | Yes |
+| DSPy | Yes | No | No |
+| WebGPU | Yes | No | No |
+| ACP | No | No | No |
 
 The LSP derives diagnostics from these capability flags. Enabling artifacts
 with an adapter that cannot carry compact refs and register the bounded
@@ -2014,6 +2036,13 @@ management tools produces a targeted capability diagnostic rather than
 silently leaking the full value. Stateful history is independent: adapters
 without it can still use artifacts within one run, but cannot resume compacted
 conversation state across calls.
+
+For Pydantic AI and LangChain, native constructor tools and local MCP tools use
+the same admission policy as Kedi `ToolSpec` tools. Large successful values are
+replaced by compact refs before the framework records its tool-result message.
+The framework's original call ID remains the artifact-history call ID. Error
+messages are not converted into artifacts, and tools already wrapped by Kedi are
+not admitted a second time.
 
 Artifact metadata, summaries, and bounded chunks may appear in traces when
 instrumentation is enabled. Raw stored payloads are not attached to artifact
@@ -2201,6 +2230,37 @@ Adapters with structured-output support accept both forms; supplying a schema
 takes precedence over a prebuilt type. An adapter must receive at least one output
 specification. ACP currently advertises no structured-output capability, so its
 `produce()` surface raises `NotImplementedError` for either form.
+
+### Agent adapter capability contract
+
+Custom adapters must advertise behavior they enforce, not only methods they
+expose:
+
+- `stateful_history` requires a conversation scope. The adapter reads only the
+  supplied resume state, stages the next continuation and cleanup in that scope,
+  and marks the scope completed only after a terminal successful result has been
+  captured. Failure, cancellation, deferred handoff, and an early-closed native
+  iterator or stream must leave the last committed continuation unchanged.
+- `history_replay` additionally requires a complete replayable native history.
+  Tool calls and results retain their causal IDs and ordering; a provider session
+  or thread ID alone is stateful continuation, not replay support.
+- `artifacts` means the adapter can carry compact Kedi artifact references and
+  register their management tools. `native_artifacts` is stronger: every
+  successful adapter-native and MCP tool result crosses artifact admission before
+  model-visible history is committed. Error results remain errors, and native
+  tool-call IDs are preserved.
+- Native run, iterator, and stream methods keep their framework input types and
+  call-specific keyword arguments. Adapter lowering must not coerce those public
+  APIs into Kedi's string-only template path.
+- Continuation payloads, live clients, cleanup callbacks, and provider messages
+  stay in the adapter conversation scope. They are not inserted into prompts,
+  request diagnostics, or telemetry attributes.
+
+Changing adapter, model, incompatible settings, MCP configuration, or the
+semantic tool contract starts a compatible continuation lane. Adapter authors
+should test successful commit, failure and cancellation rollback, early close,
+tool-call causality, cleanup replacement, and cache-epoch rotation before
+enabling the corresponding capability flags.
 
 ### `@kedi.bind`
 
