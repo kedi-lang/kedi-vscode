@@ -2625,6 +2625,71 @@ and external side effects completed before an error remain visible, while the
 failed fragment is never retried automatically. A session rejects concurrent
 or re-entrant `execute()` calls and cannot execute after `close()`.
 
+#### Local Notebook
+
+`kedi notebook` serves a local browser notebook backed by `InteractiveSession`.
+The web package is optional:
+
+```bash
+python -m pip install kedi-notebook
+kedi notebook
+```
+
+To install and serve the published package in one command, run
+`uvx --from kedi-notebook kedi-notebook`.
+
+The command listens on `127.0.0.1:8788` and opens the notebook in the default
+browser. Use `--host`, `--port`, `--cwd`, or `--no-open` to change the local
+serve behavior.
+
+Browser-owned Pyodide 3.14 is the default Python executor. The notebook also
+discovers compatible Python installations on the host and lists them in the
+runtime selector. An explicit executable can be prioritized at startup; pass
+`--python` more than once to add multiple paths:
+
+```bash
+kedi notebook --python /opt/homebrew/bin/python3.11
+kedi notebook --python ~/.pyenv/versions/3.12.4/bin/python --port 8899
+```
+
+The Kedi compiler and `InteractiveSession` remain in the notebook server. In
+browser mode embedded Python operations are bridged to one persistent Pyodide
+worker. In host mode they are bridged to one persistent worker launched by the
+selected executable, so imports resolve against that Python installation and
+Python objects remain available to later cells.
+
+The browser runtime begins loading when the page opens rather than when the
+first cell is run. Its worker and installed packages remain available for the
+life of the runtime session. Resetting the runtime deliberately creates a new
+worker and discards that browser-owned Python state.
+
+A source cell whose first non-whitespace character is `!` is a terminal cell.
+In host mode commands run in the notebook working directory. `!python` and
+`!pip` are bound to the selected host interpreter; other commands use the local
+shell. In browser mode there is no operating-system shell. The supported
+commands are `!pip install`, `!uv add`, `!pip list`, `!echo`, and `!pwd`.
+Browser `!uv add` installs into the current Pyodide worker and does not modify
+project dependency files.
+
+Kedi cells run in source order. A successful cell keeps its source editor and
+shows its output immediately below the source. It can be edited and run again;
+each rerun is a new incremental execution against the current runtime state.
+Execution never appends an empty cell automatically. Only one active cell is
+sent to the runtime at a time. Markdown cells do not alter runtime state.
+Terminal cells share the execution counter and selected Python runtime with
+Kedi cells, and stream standard output and standard error into their output
+area while running. Creating or opening a notebook document does not execute
+its cells, and the UI has no hidden replay or implicit run-all path. The
+downloaded `.kedinb` document contains source cells, not a serialized Python
+process.
+
+Execution is non-transactional, just like direct `InteractiveSession.execute()`.
+If a cell performs a side effect or creates a binding before a later statement
+fails, that completed state can remain in the session. Rerunning a successful
+or failed cell is a new execution attempt rather than a rollback.
+Starting a new runtime session clears live execution state and marks Kedi cells
+as unexecuted.
+
 #### Durable Session Snapshots
 
 `kedi.dump_session(session, path)` persists a complete, pickle-free snapshot
