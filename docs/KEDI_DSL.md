@@ -2677,13 +2677,12 @@ each rerun is a new incremental execution against the current runtime state.
 Execution never appends an empty cell automatically. Only one active cell is
 sent to the runtime at a time. Markdown cells do not alter runtime state.
 Terminal cells share the selected Python runtime with Kedi cells. Displayed
-cell numbers follow notebook order and remain unchanged
-when the same cell is run again; inserting, moving, or deleting cells recomputes
-the affected positions. Terminal cells stream standard output and standard
-error into their output area while running. Creating or opening a notebook
-document does not execute its cells, and the UI has no hidden replay or
-implicit run-all path. The downloaded `.kedinb` document contains source cells,
-not a serialized Python process.
+cell numbers follow notebook order and remain stable across reruns; inserting,
+moving, or deleting cells recomputes the affected positions. Terminal cells
+stream standard output and standard error into their output area while running.
+Creating or opening a notebook document does not execute its cells, and the UI
+has no hidden replay or implicit run-all path. The downloaded `.kedinb` document
+contains source cells, not a serialized Python process.
 
 Execution is non-transactional, just like direct `InteractiveSession.execute()`.
 If a cell performs a side effect or creates a binding before a later statement
