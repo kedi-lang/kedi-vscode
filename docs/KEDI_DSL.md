@@ -2628,19 +2628,37 @@ or re-entrant `execute()` calls and cannot execute after `close()`.
 #### Local Notebook
 
 `kedi notebook` serves a local browser notebook backed by `InteractiveSession`.
-The web package is optional:
+The web package is optional and currently runs from a Kedi source checkout:
 
 ```bash
-python -m pip install kedi-notebook
-kedi notebook
+uv run --extra notebook kedi notebook
 ```
 
-To install and serve the published package in one command, run
-`uvx --from kedi-notebook kedi-notebook`.
+This one command resolves the checked-out `notebook` submodule, installs the
+local extra, and starts the server. It does not depend on a published notebook
+distribution.
 
 The command listens on `127.0.0.1:8788` and opens the notebook in the default
 browser. Use `--host`, `--port`, `--cwd`, or `--no-open` to change the local
-serve behavior.
+serve behavior. Binding a non-loopback host requires `--token` or
+`KEDI_NOTEBOOK_TOKEN`; all notebook API and bridge requests then require that
+token.
+
+The notebook server loads `.env` from `--cwd` at startup without overriding
+existing process variables. Configure `KEDI_ADAPTER_MODEL` there or select a
+model with `> model:` in an earlier Kedi cell. Calling `load_dotenv()` inside a
+host Python cell changes only its isolated worker process, not the server that
+owns agent adapters; browser Python cannot read the host project's `.env`.
+
+Use **Secret Manager** in the notebook top bar to configure model names,
+provider credentials, and other environment values without placing them in a
+notebook. It stores values in `~/.kedi/notebook/secrets.json` with user-only
+permissions and exposes only configured names to the browser. Values may be
+entered individually or imported from an explicit `.env` path; relative paths
+resolve from `--cwd`. Secret Manager values override process and project `.env`
+values. Any change closes active runtime sessions so subsequent cells inherit
+the updated environment. Values and imported `.env` contents do not enter
+browser storage.
 
 Browser-owned Pyodide 3.14 is the default Python executor. The notebook also
 discovers compatible Python installations on the host and lists them in the
@@ -2652,16 +2670,41 @@ kedi notebook --python /opt/homebrew/bin/python3.11
 kedi notebook --python ~/.pyenv/versions/3.12.4/bin/python --port 8899
 ```
 
+Selecting host Python does not install packages into that interpreter. Kedi
+creates a persistent virtual environment named `kedi-notebook-py...` under
+`~/.kedi/notebook/venvs`, keyed by the selected interpreter and notebook
+working directory. The first host session installs the active Kedi checkout
+and its runtime dependencies; later sessions reuse the environment while it is
+valid. Set `KEDI_NOTEBOOK_ENV_HOME` to move this environment store.
+
+The package action beside a selected host runtime lists installed distributions
+and installs one or more requirement strings into the managed environment.
+Installation output streams in the dialog. `!python` and `!pip` terminal cells
+use the same managed environment, so packages installed by either surface are
+available to later cells and later notebook server runs for that project.
+
 The Kedi compiler and `InteractiveSession` remain in the notebook server. In
 browser mode embedded Python operations are bridged to one persistent Pyodide
 worker. In host mode they are bridged to one persistent worker launched by the
-selected executable, so imports resolve against that Python installation and
-Python objects remain available to later cells.
+managed environment's executable, so Python objects remain available to later
+cells without modifying the selected base interpreter.
 
 The browser runtime begins loading when the page opens rather than when the
 first cell is run. Its worker and installed packages remain available for the
 life of the runtime session. Resetting the runtime deliberately creates a new
-worker and discards that browser-owned Python state.
+worker and discards that browser-owned Python state. The Pyodide interpreter,
+standard library, Micropip, and Pydantic wheels are vendored with Kedi Notebook,
+so core browser-runtime startup does not depend on jsDelivr. Packages installed
+later with Micropip can still require network access.
+
+The download action offers **Just notebook** and **Save progress**. The first
+stores sources and cell layout without execution output or environment values.
+The second additionally stores retained outputs/results and a strict,
+pickle-free snapshot of the current Kedi `InteractiveSession`, including its
+KediEnv. Secret Manager and process environment values are never included.
+Opening a progress file restores the logical Kedi session on the next
+execution. If a live session value cannot be represented without changing its
+semantics, saving progress fails instead of writing a partial snapshot.
 
 A source cell whose first non-whitespace character is `!` is a terminal cell.
 In host mode commands run in the notebook working directory. `!python` and
@@ -2683,6 +2726,29 @@ stream standard output and standard error into their output area while running.
 Creating or opening a notebook document does not execute its cells, and the UI
 has no hidden replay or implicit run-all path. The downloaded `.kedinb` document
 contains source cells, not a serialized Python process.
+
+Moving focus does not collapse cells or replace their editors with plaintext;
+all visible cells remain editable, highlighted, and independently runnable.
+Each cell header can convert that cell between Kedi, Markdown, and Terminal.
+The eye control explicitly hides a cell when compact presentation is wanted;
+the remaining row shows its hidden state and provides the corresponding show
+action. This explicit hidden state is persisted in local drafts and `.kedinb`
+documents.
+
+The interrupt action terminates and replaces the current worker; source remains
+editable, but the interrupted runtime state is intentionally discarded. Host
+execution also has a 120-second limit, and abandoned sessions expire after 30
+minutes. Notebook files, cell source, and retained inline output have explicit
+size limits so a local document or verbose command cannot grow the browser
+state without a bound.
+
+The Kedi editor provides live Kedi and embedded-Python diagnostics, completion,
+hover, references, rename, signature help, definition navigation, and runtime
+error markers. A rename that would cross into an earlier notebook cell is
+rejected rather than applying a partial edit. `Shift+Enter` runs the active cell;
+save, insert, delete, and move commands are available from both the toolbar and
+keyboard. Markdown rendering supports common text, list, quote, link, and code
+constructs while keeping raw HTML disabled.
 
 Execution is non-transactional, just like direct `InteractiveSession.execute()`.
 If a cell performs a side effect or creates a binding before a later statement
