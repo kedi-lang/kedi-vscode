@@ -3061,6 +3061,108 @@ See the dedicated **Telemetry** guide in the Kedi documentation for the full
 configuration, span hierarchy, attributes, metrics, privacy rules, and
 instrumentation lifecycle.
 
+## Terminal-Bench 2.1 with Harbor
+
+Kedi includes an official Harbor custom-agent bridge for running reproducible
+Terminal-Bench 2.1 jobs. Harbor requires Python 3.12 or newer; install the host
+integration separately from the task-container runtime:
+
+```bash
+python3.12 -m pip install 'kedi[terminal-bench]'
+```
+
+Build the exact Kedi source first, then create an immutable manifest before
+running any tasks. The manifest records the declared Harbor revision and freezes
+the exact Harbor package version, Kedi commit and wheel digest, model route,
+effort, model settings, selected tasks, concurrency, retry and timeout policy,
+history, artifacts, and compaction policy:
+
+```bash
+uv build
+kedi-terminal-bench manifest \
+  --output runs/pilot.json \
+  --harbor-revision 389bd4f8ce796ef4a97de4b62675021e262c8e76 \
+  --model openrouter/openai/gpt-5.6-luna \
+  --effort high \
+  --kedi-wheel dist/kedi-0.4.0-py3-none-any.whl \
+  --timeout-multiplier 1 \
+  --agent-timeout-multiplier 1 \
+  --verifier-timeout-multiplier 1 \
+  --max-retries 0 \
+  --task task-a \
+  --task task-b
+```
+
+Model settings may be supplied as a JSON object with `--model-settings`. The
+manifest rejects credential-like keys and token values; provider credentials
+must continue to come from Harbor's model connection. A manifest is content
+addressed and cannot be replaced with materially different settings at the same
+path.
+
+The setup and environment-build timeout multipliers are also explicit manifest
+options. When retries are enabled, use repeatable `--retry-include` and
+`--retry-exclude` options to freeze the eligible Harbor exception classes.
+`--retry-all-exceptions` intentionally clears Harbor's default exclusion list.
+
+Pass the recorded wheel to the run. Its SHA-256 must match the manifest, which
+prevents a different Kedi build from entering the official task container:
+
+```bash
+kedi-terminal-bench run runs/pilot.json \
+  --kedi-wheel dist/kedi-0.4.0-py3-none-any.whl \
+  --jobs-dir runs/jobs \
+  --job-name pilot-1
+```
+
+The wrapper invokes Harbor's normal `run` command with
+`kedi.integrations.harbor:KediAgent`; it does not replace the official dataset,
+container, timeout, grader, lock file, or resume mechanism. If `--jobs-dir` or
+`--job-name` is omitted, Kedi uses `./jobs` and a name derived from the manifest
+digest. The manifest is copied to `kedi-manifest.json` in that Harbor job
+directory. Harbor's generated `lock.json` remains authoritative for resolved
+task hashes, image digests, resources, and grader inputs. Together these two
+files define the reproducible run contract.
+
+Resume an interrupted Harbor job through its native lifecycle:
+
+```bash
+kedi-terminal-bench resume runs/jobs/pilot-1
+```
+
+Before starting a real job, Kedi verifies that the selected `harbor` executable
+reports the manifest's pinned Harbor version. `--dry-run` only prints the exact
+command and therefore does not perform this executable check.
+
+Each task runs a benchmark-neutral Kedi coding profile with stateful history and
+file-backed Tool Artifacts enabled by default. The task agent receives bounded
+foreground and background process tools, exact argv and explicit shell paths,
+incremental process output reads, full artifact-backed logs, verification state,
+and the regular sandbox-rooted filesystem tools. Terminal subprocesses do not
+inherit provider credentials. Benchmark approval is non-interactive: read-only
+and declared task-container operations are allowed, while sensitive requests
+and tools outside the benchmark allowlist are denied.
+
+Task logs include `kedi-result.json`, `terminal-events.jsonl`, bounded command
+summaries, complete capped terminal logs, artifact payloads, and redacted error
+or cleanup records. Trial states distinguish normal completion, agent failure,
+integration failure, timeout, and cancellation; failures also retain whether
+they occurred during setup, agent execution, or teardown. Kedi token usage and
+cache usage are projected into Harbor's `AgentContext` only after Harbor has
+synced the task-container logs back to the host.
+
+Use `--no-history` to run statelessly and `--no-artifacts` to disable artifact
+admission for a controlled comparison. Stateful history always applies Kedi's
+provider-native prefix-cache placement where supported; it is not presented as
+a separately disableable provider behavior. Native compaction is opt-in through
+`--compaction-mode native`, with an optional positive
+`--compaction-threshold`. Subagents and dynamic workflows are intentionally not
+part of this fixed benchmark profile until separate capability experiments
+justify enabling them.
+
+This integration defines the execution and evidence surface only. It does not
+embed task solutions, report a Terminal-Bench score, or make an unofficial run
+leaderboard-comparable.
+
 ## Command-Line Parse Helpers
 
 Use `-c` to run Kedi source from the command line and `-p` / `--parse` to parse
