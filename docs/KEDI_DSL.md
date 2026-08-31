@@ -3101,7 +3101,9 @@ kedi-terminal-bench manifest \
 ```
 
 The manifest targets the official
-`terminal-bench/terminal-bench-2-1@6` Harbor dataset by default. Model settings
+`terminal-bench/terminal-bench-2-1@6` Harbor dataset by default. Task names may
+use the short form, such as `fix-git`; Kedi converts them to Harbor's canonical
+`terminal-bench/fix-git` task identifier when starting the job. Model settings
 may be supplied as a JSON object with `--model-settings`. The manifest rejects
 credential-like keys and token values; provider credentials come from Harbor's
 model connection, while Codex-backed routes use the isolated auth handoff
