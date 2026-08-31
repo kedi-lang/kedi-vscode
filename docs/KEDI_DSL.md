@@ -3073,9 +3073,10 @@ python3.12 -m pip install 'kedi[terminal-bench]'
 
 Daytona runs require `DAYTONA_API_KEY` in the host environment or the current
 directory's `.env` file. Codex-backed model routes use the host's existing
-`codex login` session. Kedi transfers only the Codex auth file into the
-ephemeral agent sandbox, stores it outside the task workspace and logs, and
-removes it when the agent command exits.
+`codex login` session. Kedi refreshes the host credential when needed, derives
+a short-lived access-only credential without the reusable refresh token,
+transfers that credential into the ephemeral agent sandbox outside the task
+workspace and logs, and removes it when the agent command exits.
 
 Build the exact Kedi source first, then create an immutable manifest before
 running any tasks. The manifest records the declared Harbor revision and freezes
