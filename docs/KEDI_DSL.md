@@ -3080,9 +3080,10 @@ workspace and logs, and removes it when the agent command exits.
 
 Build the exact Kedi source first, then create an immutable manifest before
 running any tasks. The manifest records the declared Harbor revision and freezes
-the exact Harbor package version, Kedi commit and wheel digest, model route,
-effort, model settings, selected tasks, concurrency, retry and timeout policy,
-history, artifacts, and compaction policy:
+the exact Harbor package version, Kedi commit and wheel digest, pinned
+`tree-sitter-kedi` gitlink revision, model route, effort, model settings,
+selected tasks, concurrency, retry and timeout policy, history, artifacts, and
+compaction policy:
 
 ```bash
 uv build
