@@ -3071,6 +3071,12 @@ integration separately from the task-container runtime:
 python3.12 -m pip install 'kedi[terminal-bench]'
 ```
 
+Daytona runs require `DAYTONA_API_KEY` in the host environment or the current
+directory's `.env` file. Codex-backed model routes use the host's existing
+`codex login` session. Kedi transfers only the Codex auth file into the
+ephemeral agent sandbox, stores it outside the task workspace and logs, and
+removes it when the agent command exits.
+
 Build the exact Kedi source first, then create an immutable manifest before
 running any tasks. The manifest records the declared Harbor revision and freezes
 the exact Harbor package version, Kedi commit and wheel digest, model route,
@@ -3082,7 +3088,7 @@ uv build
 kedi-terminal-bench manifest \
   --output runs/pilot.json \
   --harbor-revision 389bd4f8ce796ef4a97de4b62675021e262c8e76 \
-  --model openrouter/openai/gpt-5.6-luna \
+  --model codex/gpt-5.6-luna \
   --effort high \
   --kedi-wheel dist/kedi-0.4.0-py3-none-any.whl \
   --timeout-multiplier 1 \
@@ -3093,11 +3099,13 @@ kedi-terminal-bench manifest \
   --task task-b
 ```
 
-Model settings may be supplied as a JSON object with `--model-settings`. The
-manifest rejects credential-like keys and token values; provider credentials
-must continue to come from Harbor's model connection. A manifest is content
-addressed and cannot be replaced with materially different settings at the same
-path.
+The manifest targets the official
+`terminal-bench/terminal-bench-2-1@6` Harbor dataset by default. Model settings
+may be supplied as a JSON object with `--model-settings`. The manifest rejects
+credential-like keys and token values; provider credentials come from Harbor's
+model connection, while Codex-backed routes use the isolated auth handoff
+described above. A manifest is content addressed and cannot be replaced with
+materially different settings at the same path.
 
 The setup and environment-build timeout multipliers are also explicit manifest
 options. When retries are enabled, use repeatable `--retry-include` and
