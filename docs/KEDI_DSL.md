@@ -3150,9 +3150,12 @@ file-backed Tool Artifacts enabled by default. The task agent receives bounded
 foreground and background process tools, exact argv and explicit shell paths,
 incremental process output reads, full artifact-backed logs, verification state,
 and the regular sandbox-rooted filesystem tools. Terminal subprocesses do not
-inherit provider credentials. Benchmark approval is non-interactive: read-only
-and declared task-container operations are allowed, while sensitive requests
-and tools outside the benchmark allowlist are denied.
+inherit provider credentials. A command that cannot be started is returned to
+the agent as a recorded terminal result with exit code `127` when the executable
+is missing or `126` when it cannot be executed; it does not abort the agent run.
+Benchmark approval is non-interactive: read-only and declared task-container
+operations are allowed, while sensitive requests and tools outside the
+benchmark allowlist are denied.
 
 Task logs include `kedi-result.json`, `terminal-events.jsonl`, bounded command
 summaries, complete capped terminal logs, artifact payloads, and redacted error
