@@ -3153,17 +3153,36 @@ and the regular sandbox-rooted filesystem tools. Terminal subprocesses do not
 inherit provider credentials. A command that cannot be started is returned to
 the agent as a recorded terminal result with exit code `127` when the executable
 is missing or `126` when it cannot be executed; it does not abort the agent run.
+The agent runtime is installed into an isolated, uv-managed CPython 3.11
+environment, so task images with older Python versions or without development
+headers do not determine whether Kedi and `tree-sitter-kedi` can be installed.
+The configured command timeout is a hard ceiling: a larger `timeout_seconds`
+requested by the model cannot extend it. When an explicit runner deadline is
+configured, Kedi also stops admitting commands during the finalization reserve
+before that deadline so terminal evidence and the result record can be flushed.
 Benchmark approval is non-interactive: read-only and declared task-container
 operations are allowed, while sensitive requests and tools outside the
 benchmark allowlist are denied.
 
+Background processes are session-owned by default and are terminated with their
+complete process group when the agent finishes, fails, times out, or is cancelled.
+An agent may call `retain_process` after a successful health check when an external
+verifier must reach a service after the final response. Retention transfers that
+tracked process to the surrounding execution rather than detaching it: output
+continues into the same bounded logs, a fixed lifetime still applies, and failure
+or execution teardown terminates the complete process group.
+
 Task logs include `kedi-result.json`, `terminal-events.jsonl`, bounded command
 summaries, complete capped terminal logs, artifact payloads, and redacted error
 or cleanup records. Trial states distinguish normal completion, agent failure,
-integration failure, timeout, and cancellation; failures also retain whether
-they occurred during setup, agent execution, or teardown. Kedi token usage and
-cache usage are projected into Harbor's `AgentContext` only after Harbor has
-synced the task-container logs back to the host.
+integration failure, controlled model-budget exhaustion, timeout, and
+cancellation; failures also retain whether they occurred during setup, agent
+execution, or teardown. Budget exhaustion preserves the current workspace for
+the external verifier and exits successfully, so Harbor does not retry an
+otherwise verifiable task merely because the agent reached Kedi's host safety
+ceiling. Kedi token usage and cache usage are projected into Harbor's
+`AgentContext` only after Harbor has synced the task-container logs back to the
+host.
 
 Use `--no-history` to run statelessly and `--no-artifacts` to disable artifact
 admission for a controlled comparison. Stateful history always applies Kedi's
