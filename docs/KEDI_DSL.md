@@ -889,16 +889,19 @@ Notes:
 
 ## Concurrency and Non-Blocking Templates
 
-By default Kedi runs **sequentially**: every template (`>>`) call blocks until the model responds, exactly as before. Concurrency is **opt-in** and requires **no syntax changes** — the same program runs faster when you enable it.
+By default Kedi runs independent template calls **concurrently**, on a bounded shared pool of eight workers. Dependent calls wait for their inputs. No environment variable or special syntax is required.
 
-### Enabling parallel execution
+### Configuring concurrency
 
-Opt in with any one of:
+Override the default when needed:
 
-- `KEDI_PARALLEL=1` (environment variable) — `1/true/yes/on` enable it, `0/false/no/off` (or unset) keep sequential, a positive integer sets the worker count. Any other value is rejected loudly rather than silently flipping a mode.
-- `kedi.parallel(max_workers=N)` / `kedi.configure(parallel=True)` in the Python API.
+- `KEDI_PARALLEL` unset or empty keeps concurrency enabled; `1/true/yes/on` also enable it. `0/false/no/off` select sequential execution, and a positive integer sets the worker count. Invalid values are rejected.
+- `kedi.parallel(max_workers=N)` or `kedi.configure(max_workers=N)` adjusts the Python API worker bound. `kedi.configure(parallel=False)` or `kedi.context(parallel=False)` explicitly selects sequential execution and takes precedence over the environment.
 
 When parallel mode is on, independent template calls run concurrently and dependency chains pipeline automatically: in `A → B` and `C → D`, both chains run at once and each `B`/`D` starts the instant its input is ready. There is no new operator — the interpreter discovers the dataflow from how outputs feed into later inputs.
+
+Calls sharing a conversation scope, including an interactive session, retain
+their ordered turns. Default concurrency does not bypass conversation ordering.
 
 ### How it works (and what you can observe)
 
@@ -909,7 +912,7 @@ Each template output becomes an opaque **promise** until its value is actually n
 
 ### Things to know
 
-- **Sequential and parallel results are identical.** The value-environment is snapshotted by value when a template is scheduled, so a later write on the main thread can't change what an already-scheduled job sees. If you ever observe a difference, report it — it's a bug, not a tuning knob.
+- **Dependencies and input snapshots are preserved.** The value-environment is snapshotted by value when a template is scheduled, so a later write on the main thread cannot change that job's inputs. Stochastic model outputs can differ between runs; independent calls and map side effects are not guaranteed to finish in source order. Use sequential execution when external effects require source ordering.
 - **Failures are never swallowed.** Even unconsumed templates run, and any failure surfaces at end-of-run (the first error is raised; additional concurrent failures are logged). A procedure that raises still drains its scheduled jobs before the error propagates.
 - **Adapters must be thread-safe.** In parallel mode an adapter's `produce_sync` is called concurrently across worker threads. A custom adapter must be safe under concurrent calls (or serialize internally). The built-in adapters already are.
 - **`max_workers` is process-global per size.** The thread pool is shared across runs and cached by worker count; the first `parallel(max_workers=N)` for a given `N` creates that pool and subsequent requests for the same `N` reuse it.
@@ -1880,7 +1883,12 @@ When artifacts are enabled, Kedi registers four management tools:
   base64 chunk. `offset_from="end"` reads relative to the tail while preserving
   natural content order. `path` accepts an RFC 6901 JSON Pointer. `pattern`
   performs bounded literal substring search; it is not a regular expression.
-  `max_chars=-1` means the configured bounded limit, not an unbounded read.
+  Pattern search requires `path=None`, `offset=0`, and `offset_from="start"`;
+  it cannot be combined with JSON selection or pagination.
+  `max_chars=-1` means the configured bounded limit, not an unbounded read. A
+  chunk reports the requested and applied limits plus its returned character
+  count. When `complete` is false, `continuation` contains the exact
+  `read_artifact` call arguments for the next page.
 - `release_artifact(ref_id)` releases content that is no longer needed and
   frees its payload quota without changing portable history.
 - `run_artifact_code(code, artifact_refs)` runs bounded Python in a Monty
@@ -1891,6 +1899,13 @@ When artifacts are enabled, Kedi registers four management tools:
 Search and read are read-only tools. Release is mutating and follows the
 normal approval policy. Management-tool results are never converted into new
 artifacts.
+
+Invalid artifact read/search arguments and unavailable references are returned
+to the agent as tool errors so it can correct its request, subject to the adapter's
+normal retry limits. Direct Python calls raise typed artifact exceptions;
+invalid read/search arguments raise `ArtifactInputError` (also a `ValueError`).
+Storage corruption and unexpected runtime errors are not classified as correctable
+argument errors.
 
 Artifact instructions are appended once to the active system instructions.
 They direct the model to read hidden content before using it, paginate when
@@ -2304,6 +2319,11 @@ and effort overrides, model settings, scoped tools, MCP toolsets, required-tool
 validation, approvals, and adapter telemetry therefore behave the same way on
 the native surface.
 
+Constructor `model_settings` retain native provider-specific Pydantic AI options,
+including `openai_prompt_cache_key` and `openai_reasoning_effort`. They are not
+filtered through the DSL's provider-neutral settings list. The selected model
+and endpoint determine which native options are supported.
+
 The native precedence rules are explicit:
 
 - per-call instructions override the profile system instruction;
@@ -2312,6 +2332,12 @@ The native precedence rules are explicit:
   appended;
 - caller capabilities are retained and each required Kedi capability is
   appended at most once.
+
+Unless `retries` is supplied explicitly, `PydanticAdapter` allows three
+bounded retries for correctable tool-call failures. This changes only the tool
+retry category; Pydantic AI's output-validation retry budget is unchanged.
+Passing an integer or `AgentRetries` value to the adapter keeps that explicit
+policy intact.
 
 Codex-authenticated Pydantic models can also be built directly. The returned
 object is a normal Pydantic AI `Model`, so native `PydanticAdapter` tools,
@@ -2325,9 +2351,190 @@ model = codex_responses_model("gpt-5.6-luna", adapter="pydantic")
 adapter = PydanticAdapter(model)
 ```
 
-This bridge requires Python 3.11+ and `codex-auth-helper==1.6.1`, installed with
+This bridge requires Python 3.11+ and is installed with
 `uv add 'kedi[codex-model]'`. Authentication comes from the user's Codex login;
-Kedi does not accept or persist a second token for this path.
+Kedi does not accept or persist a second token for this path. The extra pins
+`codex-auth-helper[websocket]==1.8.0`, including its required WebSocket SDK support.
+
+The Pydantic and LangChain paths can explicitly keep one Responses WebSocket for an adapter
+run when the installed helper includes its `websocket` extra:
+
+```python
+model = codex_responses_model(
+    "gpt-5.6-luna",
+    adapter="pydantic",
+    connection="websocket",
+    fallback="error",
+)
+adapter = PydanticAdapter(model)
+```
+
+Kedi owns the connection lifecycle around the complete logical run, including
+its model/tool turns. HTTP remains the default. Helper 1.8.0 retries
+transient WebSocket failures for non-streaming model responses, rebuilding full
+history without rerunning completed local tools. The client `max_retries`
+controls reconnects (default two); `fallback="http"` additionally permits HTTP
+after those retries or an initial handshake failure. Lost provider work can
+still incur cost. Public streams, cancellation, permanent auth errors and
+provider-hosted tools are not blindly replayed. LangChain's WebSocket factory
+uses automatic stream selection; explicit streaming settings/callbacks can
+select the non-replaying stream path.
+Responses Lite does not support this connection mode.
+`transport_observer=` can be supplied to the factory for
+content-free physical request metrics without adding prompt, tool, auth, or raw
+response-ID data to records.
+
+For several sequential calls in the same async task, explicitly keep the
+connection open with `PydanticAdapter.responses_session()` or
+`LangChainAdapter.responses_session()`:
+
+```python
+async with adapter.responses_session():
+    first = await adapter.run("Inspect the deployment record.")
+    second = await adapter.run(
+        "Check whether the selected release needs a rollback.",
+        message_history=first.all_messages(),
+    )
+```
+
+The selected model must support Responses sessions. This context owns the
+connection, not the message history: pass native `message_history` or use Kedi
+stateful history as usual. It closes on normal exit, exceptions, and cancellation.
+Child tasks receive isolated sessions, and models selected inside the context
+that differ from its model retain their own run-scoped sessions. Synchronous
+calls still use individual run-scoped connections.
+
+Without this explicit context, the existing per-run lifecycle is unchanged.
+
+With the updated helper, each Pydantic/LangChain run also owns a fresh server
+routing turn, separate from the connection. Tool round-trips within that run
+echo the first server-provided `x-codex-turn-state`; a later run starts fresh even
+inside `adapter.responses_session()`. This applies to HTTP and WebSocket without
+changing prompt history, cache keys, or response-ID continuation. The opaque
+value is not persisted in Kedi history or transport metrics. It does not guarantee
+provider cache hits. Older helper builds remain usable without this feature.
+
+The helper reloads same-account credentials before refreshing, and bounds recovery
+from an explicit HTTP or handshake 401 to reload followed by one refresh. It does
+not replay uncertain sends or accepted streams. Permanent auth failures and
+exhausted 401s do not cause HTTP fallback. Account changes require a new client;
+same-file refresh serialization is in-process, not a cross-process lock.
+Connection reuse can preserve cache across agent calls, but it does not guarantee
+lower latency. Edited history, including the last model output, must be sent as a
+full request rather than continuing from stale server state. A WebSocket closing
+handshake is limited to 250 ms by the updated helper; generation and tool execution
+are not subject to that closing deadline.
+
+If a WebSocket is already known to be closed before the next model request,
+the helper opens a new connection and sends full history instead of continuing
+from an unavailable response. Changed handshake headers also replace the
+connection. This does not retry a request whose send or stream failed; those
+errors still propagate. Consuming a stream through `response.completed` keeps
+its completed response even when iteration stops on that event.
+
+### Shared Framework Run Policies
+
+Both framework adapters accept `default_usage_limits=UsageLimits(...)` and
+`history_archive=HistoryArchiveSettings(...)`. Per-call `usage_limits` overrides
+the constructor default; explicit `None` selects the normal run defaults rather
+than inheriting a custom constructor limit.
+
+LangChain enforces request and successful tool-call limits before dispatch, and
+input/output/total/per-request input token limits against provider-reported usage.
+Parallel tool calls reserve their slots before execution. Request counts are not
+approximated by graph recursion: `recursion_limit` and caller `config` go to
+LangGraph's configuration, not message state. Provider-exact preflight token
+counting and USD `cost_limit` are not supported by this LangChain bridge; requesting
+either fails explicitly before a model request. Cached tokens are included in
+native input limits; Kedi's separate request-budget accounting uses uncached input.
+
+Filesystem, terminal, dynamic-workflow, subagent and artifact tool corrections
+share the same Kedi error classification. LangChain returns native failed tool
+messages and permits three corrections per tool per run by default
+(`tool_retries=3`); it does not automatically repeat a side-effecting operation.
+Unclassified application exceptions and cancellation remain failures.
+
+Exact history archival is opt-in and requires an active artifact manager/policy:
+
+```python
+from pydantic_ai import UsageLimits
+from kedi.agent_adapter import LangChainAdapter, PydanticAdapter
+from kedi.agent_adapter.compaction import HistoryArchiveSettings
+
+archive = HistoryArchiveSettings(
+    threshold_tokens=32_000,
+    preserve_recent_tokens=12_000,
+    minimum_reduction_tokens=8_000,
+)
+pydantic_adapter = PydanticAdapter(
+    default_usage_limits=UsageLimits(request_limit=100), history_archive=archive,
+)
+langchain_adapter = LangChainAdapter(
+    default_usage_limits=UsageLimits(request_limit=100), history_archive=archive,
+)
+```
+
+This stores old, completed tool exchanges exactly and retains a bounded checkpoint
+with their artifact reference. It is not a semantic summarizer and does not add a
+DSL compaction mode. User instructions, unresolved tool lifecycles, earlier
+checkpoints and the recent tail remain intact. Missing/disabled artifact storage
+or storage/quota errors leave history unchanged. Configure an appropriate retention
+policy: exact archived transcripts can contain sensitive tool output.
+
+Pydantic uses its history capability; LangChain persistently replaces native graph
+message state. Both use the same selection, storage and checkpoint policy. Existing
+Pydantic capability/processor names remain supported. Cache keys advance once per
+checkpoint, and replay does not repeatedly append epochs. Invocation usage is
+collected independently of retained LangChain history, so archival cannot erase
+usage already incurred.
+
+### Native LangChain settings and Codex sessions
+
+`LangChainAdapter(model, model_settings=...)` preserves native settings rather
+than applying the DSL settings filter. For an existing chat model, request fields
+such as `reasoning` are applied to a copy, and `model_kwargs` merge in the order
+native model, constructor kwargs, constructor `model_settings`, active profile.
+The caller's model and dictionaries are not mutated. Explicit native cache keys
+take precedence over generated conversation keys. Profile `effort` overrides the
+existing reasoning effort while preserving other reasoning options.
+
+Transport construction settings, such as endpoint, credentials, client timeout
+and retries, must be configured on the native model constructor when passing an
+already initialized model. They cannot be changed by copying its fields while
+retaining the old clients. String models still accept construction settings
+through the adapter.
+
+```python
+from kedi import codex_responses_model
+from kedi.agent_adapter import LangChainAdapter
+from kedi.agent_adapter.conversation import ConversationState
+
+model = codex_responses_model(
+    "gpt-5.6-luna", adapter="langchain", connection="websocket",
+)
+adapter = LangChainAdapter(model, model_settings={"reasoning": {"effort": "high"}})
+conversation = ConversationState(session_id="release-review")
+try:
+    async with adapter.responses_session():
+        for prompt in ("Review release amber.", "Recheck the current release."):
+            async with conversation.adapter_turn_async("langchain") as context:
+                with adapter.conversation_scope(context):
+                    answer = await adapter.invoke(prompt=prompt, instructions="Review the evidence.")
+                context.record_exchange(prompt, answer)
+finally:
+    conversation.close()
+```
+
+Codex's LangChain model retains native tool, structured-output and stream-event
+conversion. Active system messages become Codex `instructions`; when absent,
+the factory instruction remains the fallback. HTTP responses are streamed even
+for an `invoke` call because the Codex endpoint requires streaming.
+
+WebSocket continuation is session-owned; do not enable LangChain's unchecked
+`use_previous_response_id` or supply response IDs manually. History or request
+contract changes send full input. Native synchronous LangChain model calls and
+HTTP response-header capture are not supported over WebSocket; use async calls
+or Kedi's sync wrappers. Closing a LangChain stream early invalidates its chain.
 
 Enable the Kedi-owned CodeMode capability from any supported adapter
 constructor. Native Pydantic runs additionally expose a single-run capability:
@@ -3071,6 +3278,12 @@ integration separately from the task-container runtime:
 python3.12 -m pip install 'kedi[terminal-bench]'
 ```
 
+The host extra pins `codex-auth-helper==1.8.0` for credential management.
+For Codex routes, the isolated task runtime installs
+`codex-auth-helper[websocket]==1.8.0`. Keep `terminal-bench` separate from
+`codex-model` and the development group: Harbor's LiteLLM dependency requires
+OpenAI `<3`, while the WebSocket runtime requires OpenAI `>=3.8.0`.
+
 Daytona runs require `DAYTONA_API_KEY` in the host environment or the current
 directory's `.env` file. Codex-backed model routes use the host's existing
 `codex login` session. Kedi refreshes the host credential when needed, derives
@@ -3157,9 +3370,23 @@ The agent runtime is installed into an isolated, uv-managed CPython 3.11
 environment, so task images with older Python versions or without development
 headers do not determine whether Kedi and `tree-sitter-kedi` can be installed.
 The configured command timeout is a hard ceiling: a larger `timeout_seconds`
-requested by the model cannot extend it. When an explicit runner deadline is
-configured, Kedi also stops admitting commands during the finalization reserve
-before that deadline so terminal evidence and the result record can be flushed.
+requested by the model cannot extend it. For single-step Harbor trials, Kedi
+reads the task's agent timeout and the trial's override, cap, and multiplier.
+An explicit `runner_timeout_seconds` may shorten but cannot extend that budget.
+The deadline starts when Harbor calls the agent, before instruction and credential
+handoff; an absolute UTC deadline includes handoff and runner launch latency
+(host and sandbox clocks must be synchronized). Harbor's outer timeout remains
+authoritative. Direct calls without Harbor metadata may still set an explicit
+runner timeout; multi-step phase budgets are not inferred automatically.
+Kedi stops admitting commands during the finalization reserve before the deadline
+so terminal evidence and the result record can be flushed. In the last 20% of
+the remaining runner budget, capped at 120 seconds, one terminal dictionary result
+includes `execution_budget` with the remaining seconds and finalization reserve.
+This does not change the tool's output, request another model turn, or rewrite
+the system prompt or history. It is a one-time notice, not a deadline extension.
+The agent deadline is separate from the lifetime of a service explicitly retained
+for verification. Such services keep their bounded retention lifetime after a
+successful handoff; failure, cancellation, and sandbox teardown still terminate them.
 Benchmark approval is non-interactive: read-only and declared task-container
 operations are allowed, while sensitive requests and tools outside the
 benchmark allowlist are denied.
@@ -3172,6 +3399,12 @@ tracked process to the surrounding execution rather than detaching it: output
 continues into the same bounded logs, a fixed lifetime still applies, and failure
 or execution teardown terminates the complete process group.
 
+When a tracked command exits, remaining descendants in its process group are
+terminated before draining its output. A foreground shell cannot leave an
+untracked background service holding its output pipes open. Use the background
+process tools and retention for services; their tracked main process must remain
+running. The original command's exit code and captured output are preserved.
+
 Task logs include `kedi-result.json`, `terminal-events.jsonl`, bounded command
 summaries, complete capped terminal logs, artifact payloads, and redacted error
 or cleanup records. Trial states distinguish normal completion, agent failure,
@@ -3183,6 +3416,16 @@ otherwise verifiable task merely because the agent reached Kedi's host safety
 ceiling. Kedi token usage and cache usage are projected into Harbor's
 `AgentContext` only after Harbor has synced the task-container logs back to the
 host.
+
+`setup-runtime.log` is written while bootstrap, managed-Python creation and
+runtime package installation run, so a cancelled installation keeps its partial
+output and the last started phase. `runner-exit.json` records the actual runner
+process exit separately from `kedi-result.json` and Harbor's host-side completion.
+These timestamps distinguish runtime work from process shutdown and delayed
+host observation. Cancellation cleanup has a 25-second host-side timeout as
+well as a remote command timeout; an unavailable sandbox must not cause an
+unbounded cleanup wait. These are cooperative transport bounds, not a guarantee
+that an unreachable sandbox was successfully cleaned up.
 
 Use `--no-history` to run statelessly and `--no-artifacts` to disable artifact
 admission for a controlled comparison. Stateful history always applies Kedi's
