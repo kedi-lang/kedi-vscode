@@ -1772,6 +1772,7 @@ default and can be configured at top level, inside a procedure, or in a profile:
 
 ```kedi
 > artifacts:
+    query_artifacts: disabled
     store: memory
     threshold: 100kb
     ttl: 1h
@@ -1788,6 +1789,7 @@ Artifact fields and defaults:
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `enabled` | `true` | Enables artifact conversion in the current agent scope. |
+| `query_artifacts` | `disabled` | Enables bounded lexical retrieval with the `query_artifact` tool. |
 | `store` | `memory` | Uses the process-local `memory` store or the bounded `file` store. |
 | `path` | `.kedi/artifacts` | File-store root. It is ignored by the memory store. |
 | `threshold` | `100kb` | Minimum serialized byte size converted into an artifact. |
@@ -1811,7 +1813,9 @@ runtime value is needed:
 ```
 
 The policy is lexical. A nested directive changes subsequent calls in that
-scope, and `enabled: false` explicitly disables an inherited policy:
+scope. `query_artifacts: enabled` exposes lexical artifact retrieval only in
+that scope, while `query_artifacts: disabled` removes it again. Likewise,
+`enabled: false` explicitly disables an inherited artifact policy:
 
 ```kedi
 > profile: compact:
@@ -1874,7 +1878,8 @@ their original native values.
 
 #### Agent tools
 
-When artifacts are enabled, Kedi registers four management tools:
+When artifacts are enabled, Kedi registers four management tools and can expose
+one optional retrieval tool:
 
 - `search_artifacts(query: str | None = None, limit: int = 20)` searches active
   metadata without opening payloads.
@@ -1889,6 +1894,9 @@ When artifacts are enabled, Kedi registers four management tools:
   chunk reports the requested and applied limits plus its returned character
   count. When `complete` is false, `continuation` contains the exact
   `read_artifact` call arguments for the next page.
+- `query_artifact(ref_id, query, max_chars=-1, top_k=3)` is available when
+  `query_artifacts: enabled`. It returns bounded, relevance-ranked passages from
+  one known artifact without calling a model or embedding service.
 - `release_artifact(ref_id)` releases content that is no longer needed and
   frees its payload quota without changing portable history.
 - `run_artifact_code(code, artifact_refs)` runs bounded Python in a Monty
@@ -2160,8 +2168,9 @@ Rules:
   `> skills: enabled`. Pass `SkillsSettings(...)` instead of `True` to configure
   the same source, limit, and exclusion policy from Python.
 - Artifact handling is enabled by default. A mapping such as
-  `artifacts={"threshold": "100kb", "ttl": "1h"}` applies the same policy
-  fields as `> artifacts:`. Pass `artifacts=False` in a nested
+  `artifacts={"threshold": "100kb", "ttl": "1h", "query_artifacts":
+  "enabled"}` applies the same policy fields as `> artifacts:`. Pass
+  `artifacts=False` in a nested
   context or callable to disable an inherited policy.
 - `conversation=` accepts a `ConversationState` when calls must reuse portable
   history and artifact ownership. Prefer `with kedi.session():` for bounded
@@ -3354,6 +3363,18 @@ Resume an interrupted Harbor job through its native lifecycle:
 kedi-terminal-bench resume runs/jobs/pilot-1
 ```
 
+Rerunning the original `kedi-terminal-bench run` command with the same manifest,
+jobs directory, and job name is also restart-safe. If Harbor's `lock.json` or
+`config.json` shows that the job started, Kedi invokes Harbor's native resume
+path instead of creating a second job. A job whose final result accounts for all
+trials is a no-op. A different manifest is still rejected.
+
+Run the Harbor controller on a durable host. Daytona may provide the isolated
+task environments, but a long-lived controller should not itself live in an
+ephemeral task sandbox: provider shutdown can interrupt the boundary between a
+completed agent and its verifier. On a durable host, the persisted Kedi manifest
+and Harbor lock are sufficient to continue after a process or machine restart.
+
 Before starting a real job, Kedi verifies that the selected `harbor` executable
 reports the manifest's pinned Harbor version. `--dry-run` only prints the exact
 command and therefore does not perform this executable check.
@@ -3379,7 +3400,11 @@ handoff; an absolute UTC deadline includes handoff and runner launch latency
 authoritative. Direct calls without Harbor metadata may still set an explicit
 runner timeout; multi-step phase budgets are not inferred automatically.
 Kedi stops admitting commands during the finalization reserve before the deadline
-so terminal evidence and the result record can be flushed. In the last 20% of
+so terminal evidence and the result record can be flushed. Pydantic and LangChain
+adapter calls are also cancelled at that boundary, allowing active conversation
+turns to unwind before cleanup. The outer timeout remains a hard fallback for
+work that does not cooperate with cancellation; this does not extend the task
+budget or turn a timeout into a successful result. In the last 20% of
 the remaining runner budget, capped at 120 seconds, one terminal dictionary result
 includes `execution_budget` with the remaining seconds and finalization reserve.
 This does not change the tool's output, request another model turn, or rewrite
@@ -3415,7 +3440,11 @@ the external verifier and exits successfully, so Harbor does not retry an
 otherwise verifiable task merely because the agent reached Kedi's host safety
 ceiling. Kedi token usage and cache usage are projected into Harbor's
 `AgentContext` only after Harbor has synced the task-container logs back to the
-host.
+host. If timeout or cancellation interrupts the aggregate invocation callback,
+Kedi reconstructs completed request counts and token usage from the append-only
+`model-requests.jsonl` evidence. Per-request provider cost is retained when the
+provider reports it; Kedi leaves cost unknown rather than estimating a partial
+value when any completed request lacks measured cost.
 
 `setup-runtime.log` is written while bootstrap, managed-Python creation and
 runtime package installation run, so a cancelled installation keeps its partial
