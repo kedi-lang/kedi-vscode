@@ -2117,6 +2117,13 @@ The bundled filesystem module treats normal reads as read-only, but refuses
 `secret_files=True`, which upgrades that call to sensitive and therefore needs
 an explicit `allow` policy or a dynamic approval decision.
 
+Filesystem paths are restricted to the process working directory by default.
+Leave `KEDI_WORKSPACE_POLICY` unset or set it to `strict` to retain that
+boundary. Set `KEDI_WORKSPACE_POLICY=none` only in an already isolated runtime
+when filesystem tools must access paths outside the working directory. This
+does not disable secret-file approval, read-size limits, path normalization, or
+protected-root deletion checks. Any other value is rejected.
+
 ## Python API
 
 Kedi can be embedded in Python without creating a separate CLI entrypoint. The
