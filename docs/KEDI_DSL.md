@@ -1078,6 +1078,24 @@ enable scoped skill discovery.
   > model: codex/gpt-5.6-luna
   > effort: high
   ```
+
+  `typesafe/<model>` selects a TypeSafe Jev model through the Pydantic or LangChain adapter.
+  Install `kedi[typesafe]` for Pydantic or `kedi[langchain,typesafe]` for LangChain. Jev can
+  evaluate template conditions and fill boolean, enum, literal, or otherwise constrained output
+  fields. It rejects unconstrained `str` fields and raw text invokes before making a provider
+  request:
+
+  ```kedi
+  > adapter: pydantic
+  > model: typesafe/jev-latest
+
+  > if: Ankara is the capital of Turkey
+    = established
+  > else:
+    = not established
+  ```
+
+  The same program works with `> adapter: langchain`; only the adapter directive changes.
 - `> effort: level` — set active reasoning effort. Accepted values are
   `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; plain values or
   `` `expression` `` are allowed. Pydantic AI maps `max` to `xhigh`.
