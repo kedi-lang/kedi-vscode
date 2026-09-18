@@ -816,6 +816,67 @@ the field description in JSON schema:
 
 Defaulted type fields must be annotated. Required fields must come before defaulted fields. Generated Kedi types are Pydantic `BaseModel` subclasses, so keyword construction and model APIs such as `model_dump_json()` remain available; Kedi also supports positional construction in field order.
 
+### Validation Constraints
+
+`from kedi import Constraints` provides validation metadata for Python `Annotated`
+types, Pydantic models, and Kedi's computed type expressions. It delegates to
+Pydantic's `Field` without exposing model-field configuration such as defaults,
+aliases, or serialization options. It does not require `kedi-typesafe`.
+
+```python
+from typing import Annotated
+from pydantic import BaseModel
+from kedi import Constraints
+
+class Review(BaseModel):
+    score: Annotated[
+        float,
+        Constraints(ge=0, le=2),
+    ]
+    title: Annotated[
+        str,
+        Constraints(min_length=1, max_length=100),
+    ]
+```
+
+In Kedi, define the annotation in a Python prelude and reference it through an
+existing backtick type expression. No new native call syntax is introduced:
+
+````kedi
+```
+from typing import Annotated
+from kedi import Constraints
+
+Score = Annotated[
+    float,
+    "Evaluation score",
+    Constraints(ge=0, le=2),
+]
+```
+~Review(
+  score: `Score`
+)
+[review: Review] = `Review(score=1.5)`
+= `review.score`
+````
+
+Supported keyword-only options:
+
+- `ge`, `le`: inclusive bounds; `gt`, `lt`: exclusive bounds.
+- `multiple_of`: numeric multiple constraint.
+- `min_length`, `max_length`: string or collection length bounds.
+- `pattern`: string regex or compiled string pattern, using Pydantic's matching
+  semantics (use anchors when the entire value must match).
+- `strict`: enable or disable Pydantic coercion for the annotated type.
+- `allow_inf_nan`: allow or reject infinite and NaN numeric values.
+- `max_digits`, `decimal_places`: decimal precision constraints.
+
+Omitted options leave the underlying type's behavior unchanged. Constraints must
+be compatible with that type. They validate values and contribute applicable JSON
+schema constraints; they do not guarantee that a model will generate a valid
+value. Python `Annotated` string descriptions are interpreted by Kedi; plain
+Pydantic models still use Pydantic's own description metadata when needed.
+
 ## Advanced Features
 
 ### Multiline Templates and Returns
@@ -1085,6 +1146,10 @@ enable scoped skill discovery.
   fields. It rejects unconstrained `str` fields and raw text invokes before making a provider
   request:
 
+  The current `typesafe` and `codex-model`/`terminal-bench` extras pin incompatible
+  Pydantic AI release lines. Install them in separate environments; uv rejects the
+  unsupported combined selections explicitly.
+
   ```kedi
   > adapter: pydantic
   > model: typesafe/jev-latest
@@ -1096,6 +1161,74 @@ enable scoped skill discovery.
   ```
 
   The same program works with `> adapter: langchain`; only the adapter directive changes.
+
+  Jev criteria are available through the optional `kedi.typesafe` module:
+
+  ````kedi
+  ```
+  from typing import Annotated
+  from kedi.typesafe import Rubric
+
+  Quality = Annotated[
+      float,
+      "How correct is the answer?",
+      Rubric(["Incorrect", "Partly correct", "Correct"]),
+  ]
+  ```
+  > adapter: pydantic
+  > model: typesafe/jev-latest
+  >> Evaluate this answer: Paris is the capital of France. Quality: [quality: `Quality`].
+  = `quality`
+  ````
+
+  `kedi.typesafe` exports `Rubric`, `ChoiceCriteria`, `BooleanCriteria`, and `Probability` from
+  `kedi-typesafe`. Importing this module without that optional package raises an
+  immediate error with installation instructions. Ordinary `import kedi` does not
+  require it. These helpers are imported explicitly; they are not global DSL types.
+  `Probability` is a finite float constrained to [0, 1]. A rubric with N levels
+  validates scores in [0, N-1] without requiring additional range metadata.
+
+  Jev output bindings retain read-only decision evidence. Import `decision_info`
+  in the Python prelude and inspect a binding by name:
+
+  ````kedi
+  ```
+  from kedi import decision_info
+  ```
+  > adapter: pydantic
+  > model: typesafe/jev-latest
+
+  [ticket] = I was charged twice for the same invoice.
+  >> Does <ticket> describe a duplicate charge? [duplicate_charge: bool]
+
+  `print(decision_info("duplicate_charge").probability)`
+  `print(decision_info("duplicate_charge").threshold)`
+
+  [ticket] := I was charged only once.
+  `print(decision_info("duplicate_charge").matches_inputs(ticket=ticket))`
+  ````
+
+  `decision_info(name)` uses the current lexical scope. `InteractiveSession` also
+  provides `session.decision_info(name)` for top-level inspection. It returns
+  `None` for a normal non-Jev value and raises `NameError` for an unknown binding.
+  Reading pending evidence waits for the existing template call; it never starts
+  another model or tool call.
+
+  Evidence records the model, source location, raw provider probability or
+  confidence/distribution where available, the applied boolean threshold, and
+  versioned state, criteria, configuration, request, and explicit-input fingerprints
+  rather than a second copy of each prompt input. Nested and multilabel answers retain
+  their individual paths; Kedi does not merge them into one probability. A Noul
+  probability is not exposed as a separate confidence value. `matches_inputs`
+  compares only the explicit `<name>` inputs captured for that call; it does not
+  assert that history, tools, files, databases, or other external state are still
+  unchanged. Computed substitutions that cannot be tracked completely reject this
+  check instead of reporting a false match.
+
+  Reassigning an input does not rewrite historical evidence. Reassigning the
+  output binding with `:=` or Python removes the evidence from that current
+  binding, because the new value was not produced by the recorded model call.
+  This metadata is provenance, not automatic re-evaluation or a reactive value.
 - `> effort: level` — set active reasoning effort. Accepted values are
   `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; plain values or
   `` `expression` `` are allowed. Pydantic AI maps `max` to `xhigh`.
