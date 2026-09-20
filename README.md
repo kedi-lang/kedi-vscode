@@ -29,7 +29,22 @@ Kedi is a lightweight DSL for orchestrating LLM workflows. This extension ships 
 
 ## Configuration
 
-The extension prefers a workspace-local `./.venv/bin/kedi-lsp` (or Windows `.\.venv\Scripts\kedi-lsp.exe`) when present. Otherwise it starts `kedi-lsp` with the Python interpreter selected by the Microsoft Python extension when possible. Override the server path only when the active interpreter cannot import `kedi`:
+On first activation in a trusted window, the extension prepares
+`~/.kedi/editor-venv`, shared with the Kedi Zed extension. No existing Python
+installation is required. A checksum-verified uv 0.11.21 downloads managed
+Python 3.12 and installs `kedi==0.4.0`, `tree-sitter-kedi==0.4.0`, and their
+dependencies, including the language server. An absolute `KEDI_HOME` overrides
+`~/.kedi`. Python downloads and package caches stay inside that directory.
+
+Both editors use the same installation lock. A healthy environment is reused
+without downloading packages; failed installations are retried on the next
+activation or **Kedi: Restart Language Server**. Missing environments are
+recreated. Unowned directories and symlinks are not overwritten. The managed
+environment is for editor services, not your project's dependencies or CLI PATH.
+
+Use **Kedi: Select Python Interpreter** to return to the managed environment,
+follow **Python: Select Interpreter**, or enter a host executable. The default
+does not automatically execute a workspace-local server. To use a host Python:
 
 ```json
 {
@@ -38,7 +53,14 @@ The extension prefers a workspace-local `./.venv/bin/kedi-lsp` (or Windows `.\.v
 }
 ```
 
-For final fallback without an interpreter path, configure the command used on `PATH`:
+Kedi must already be installed in a selected host environment; the extension
+never installs into or modifies it. Following the Microsoft Python extension
+is opt-in with `kedi.lsp.usePythonExtension: true`. Its environment-change
+callback restarts Kedi automatically, resolving environment folders to their
+actual Python executable. An explicit `pythonPath` takes priority.
+
+For an advanced server override, with no `pythonPath` and
+`usePythonExtension: false`, configure:
 
 ```json
 {
@@ -55,3 +77,16 @@ Embedded Python hover, go-to-definition, and references are enabled by default f
 ```
 
 For Pylance compatibility, the extension writes generated Python shadow files under VS Code's extension storage directory, outside the current workspace. They are cache-like files and can be deleted; the extension regenerates them when needed.
+
+## Runtime Development and Release
+
+`runtime/bootstrap.js` is the canonical shared installer. Run `npm run bundle`
+and, from the parent Kedi checkout, `node scripts/sync_editor_runtime.mjs` to
+update Zed's identical bundled copy. `npm test` checks installation recovery,
+cross-process locking, and interpreter selection. `runtime/smoke.cjs` verifies
+real installation, offline reuse, and an LSP handshake in an explicit test home.
+
+**Release prerequisite:** verify both pinned 0.4.0 Python packages are available
+from PyPI before publishing the extension. The installer intentionally fails
+clearly instead of silently using an incompatible older release. Local smoke
+tests can pass current wheels as arguments.

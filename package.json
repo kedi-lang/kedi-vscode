@@ -2,7 +2,7 @@
   "name": "kedi-vscode",
   "displayName": "Kedi-Lang",
   "description": "LSP-powered language support for Kedi DSL: highlighting via semantic tokens (tree-sitter on the server), diagnostics, hover, go-to-definition, references, rename, outline, signature help, inlay hints, formatting, plus Python LSP feature forwarding inside fenced ```python``` blocks.",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "publisher": "dyigitpolat",
   "icon": "icon.png",
   "engines": {
@@ -21,16 +21,20 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/dyigitpolat/kedi-vscode"
+    "url": "https://github.com/kedi-lang/kedi-vscode"
   },
   "main": "./dist/extension.js",
   "activationEvents": [
+    "onStartupFinished",
     "onLanguage:kedi",
     "onLanguage:python"
   ],
   "extensionDependencies": [
     "ms-python.python"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": false }
+  },
   "contributes": {
     "languages": [
       {
@@ -61,18 +65,18 @@
       "properties": {
         "kedi.lsp.usePythonExtension": {
           "type": "boolean",
-          "default": true,
-          "description": "Spawn the kedi-lsp server with the Python interpreter selected by the Microsoft Python extension (env-aware: venv, conda, pyenv, poetry, uv, etc.). When the interpreter changes in the IDE, the server is restarted automatically."
+          "default": false,
+          "description": "Use the Microsoft Python extension's selected interpreter instead of the shared ~/.kedi/editor-venv. Kedi must already be installed there. Interpreter changes restart the server."
         },
         "kedi.lsp.pythonPath": {
           "type": "string",
           "default": "",
-          "description": "Explicit Python interpreter path to use when kedi.lsp.usePythonExtension is false or the Python extension is unavailable. The server is launched as `<pythonPath> -m kedi.lsp.server`."
+          "description": "Explicit host Python executable, overriding the managed environment and Python extension selection. Kedi must already be installed there; no packages are installed into host environments."
         },
         "kedi.lsp.serverCommand": {
           "type": "string",
-          "default": "kedi-lsp",
-          "description": "Final fallback command spawned over stdio when no Python interpreter could be resolved (must be on PATH)."
+          "default": "",
+          "description": "Advanced server command override, used only when neither pythonPath nor usePythonExtension is set. Empty uses the shared managed Python environment."
         },
         "kedi.lsp.trace.server": {
           "type": "string",
@@ -109,6 +113,11 @@
     ],
     "commands": [
       {
+        "command": "kedi.selectPythonInterpreter",
+        "title": "Select Python Interpreter",
+        "category": "Kedi"
+      },
+      {
         "command": "kedi.restartServer",
         "title": "Kedi: Restart Language Server",
         "category": "Kedi"
@@ -116,6 +125,7 @@
     ]
   },
   "dependencies": {
+    "proper-lockfile": "4.1.2",
     "vscode-languageclient": "9.0.1"
   },
   "devDependencies": {
@@ -128,7 +138,9 @@
   "scripts": {
     "vscode:prepublish": "npm run bundle",
     "compile": "tsc -p ./ --noEmit",
-    "bundle": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18 --minify",
+    "build:runtime": "esbuild runtime/bootstrap.js --bundle --outfile=runtime/bootstrap.cjs --format=cjs --platform=node --target=node18 --minify",
+    "test": "node --test runtime/bootstrap.test.cjs tests/*.test.cjs",
+    "bundle": "npm run build:runtime && esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18 --minify",
     "watch": "tsc -watch -p ./ --noEmit",
     "package": "vsce package",
     "publish": "vsce publish"

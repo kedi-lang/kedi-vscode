@@ -12,10 +12,15 @@ out/**
 src/**
 esbuild.config.*
 .git/**
+.git
 *.vsix
 .DS_Store
 .editorconfig
 *.log
 *.lock
+runtime/bootstrap.js
+runtime/*.test.cjs
+runtime/smoke.cjs
+tests/**
 package-lock.json
 yarn.lock

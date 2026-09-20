@@ -13,15 +13,11 @@
  * Python semantic tokens for those embedded regions so Python
  * keywords, strings, functions, etc. light up inside Kedi documents.
  *
- * The server is spawned with the **editor's** active Python
- * interpreter — read from the official Python extension's API so
- * venv/conda/pyenv/poetry/uv all "just work". When the user switches
- * interpreter, the server restarts transparently.
+ * A shared managed Python is the default. Following the Python extension's
+ * selected interpreter is an explicit opt-in.
  */
 
 import * as vscode from "vscode";
-import * as fs from "fs";
-import * as path from "path";
 import {
     LanguageClient,
     LanguageClientOptions,
@@ -34,6 +30,7 @@ import {
     registerEmbeddedKediInPython,
     EmbeddedKediInPython,
 } from "./embeddedKediInPython";
+import { managedPython, selectPython } from "./runtime";
 
 let client: LanguageClient | undefined;
 let embedded: EmbeddedPython | undefined;
@@ -41,14 +38,12 @@ let embeddedKedi: EmbeddedKediInPython | undefined;
 let pythonApi: any | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
 
-const WORKSPACE_LOCAL_KEDI_LSP_CANDIDATES = [
-    [".venv", "bin", "kedi-lsp"],
-    ["venv", "bin", "kedi-lsp"],
-    [".venv", "Scripts", "kedi-lsp.exe"],
-    ["venv", "Scripts", "kedi-lsp.exe"],
-];
+let restartQueue: Promise<void> = Promise.resolve();
+let restartTimer: ReturnType<typeof setTimeout> | undefined;
+let disposed = false;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+    disposed = false;
     outputChannel = vscode.window.createOutputChannel("Kedi Language Server");
     context.subscriptions.push(outputChannel);
 
@@ -57,7 +52,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     embedded = registerEmbeddedPython(context, () => client);
     embeddedKedi = registerEmbeddedKediInPython(context, () => client);
 
-    await startClient(context, embedded);
+    context.subscriptions.push(vscode.commands.registerCommand("kedi.selectPythonInterpreter", selectPython));
 
     // Restart when the user changes their Python interpreter.
     try {
@@ -65,10 +60,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (pythonApi?.environments?.onDidChangeActiveEnvironmentPath) {
             context.subscriptions.push(
                 pythonApi.environments.onDidChangeActiveEnvironmentPath(async () => {
+                    const cfg = vscode.workspace.getConfiguration("kedi");
+                    if (!cfg.get<boolean>("lsp.usePythonExtension", false) || cfg.get<string>("lsp.pythonPath", "")) return;
                     outputChannel?.appendLine(
                         "Active Python interpreter changed — restarting kedi-lsp."
                     );
-                    await restartClient(context);
+                    scheduleRestart(context);
                 })
             );
         }
@@ -86,7 +83,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 e.affectsConfiguration("kedi.lsp.pythonPath") ||
                 e.affectsConfiguration("kedi.lsp.serverCommand")
             ) {
-                await restartClient(context);
+                scheduleRestart(context);
             }
         })
     );
@@ -95,12 +92,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         vscode.commands.registerCommand("kedi.restartServer", async () => {
             await restartClient(context);
-            vscode.window.showInformationMessage("Kedi LSP restarted.");
         })
     );
+    await restartClient(context);
 }
 
 export async function deactivate(): Promise<void> {
+    disposed = true;
+    if (restartTimer) clearTimeout(restartTimer);
+    await restartQueue;
     if (client) {
         await client.stop();
         client = undefined;
@@ -111,7 +111,19 @@ export async function deactivate(): Promise<void> {
     embeddedKedi = undefined;
 }
 
-async function restartClient(context: vscode.ExtensionContext): Promise<void> {
+function scheduleRestart(context: vscode.ExtensionContext): void {
+    if (restartTimer) clearTimeout(restartTimer);
+    restartTimer = setTimeout(() => { void restartClient(context); }, 300);
+}
+
+function restartClient(context: vscode.ExtensionContext): Promise<void> {
+    restartQueue = restartQueue.then(async () => {
+        if (!disposed) await restartNow(context);
+    }).catch(err => { outputChannel?.appendLine(`Kedi startup failed: ${err}`); });
+    return restartQueue;
+}
+
+async function restartNow(context: vscode.ExtensionContext): Promise<void> {
     if (client) {
         try {
             await client.stop();
@@ -132,19 +144,19 @@ async function startClient(
     emb: EmbeddedPython
 ): Promise<void> {
     const cfg = vscode.workspace.getConfiguration("kedi");
-    const usePythonExtension = cfg.get<boolean>("lsp.usePythonExtension", true);
+    const usePythonExtension = cfg.get<boolean>("lsp.usePythonExtension", false);
     const explicitPath = cfg.get<string>("lsp.pythonPath", "");
-    const serverCommand = cfg.get<string>("lsp.serverCommand", "kedi-lsp");
+    const serverCommand = cfg.get<string>("lsp.serverCommand", "");
     const trace = cfg.get<string>("lsp.trace.server", "off");
 
-    const serverOptions = await resolveServerOptions(
-        usePythonExtension,
-        explicitPath,
-        serverCommand
-    );
-    if (serverOptions === null) {
+    let serverOptions: ServerOptions;
+    try {
+        serverOptions = await resolveServerOptions(context, usePythonExtension, explicitPath, serverCommand);
+    } catch (err) {
+        void showStartupError(err);
         return;
     }
+    if (disposed) return;
 
     const clientOptions: LanguageClientOptions = {
         documentSelector: [
@@ -180,36 +192,19 @@ async function startClient(
         await client.start();
         outputChannel?.appendLine("kedi-lsp started.");
     } catch (err) {
-        outputChannel?.appendLine(`Failed to start kedi-lsp: ${err}`);
-        const action = await vscode.window.showErrorMessage(
-            `Could not start Kedi language server. ${err}`,
-            "Install Kedi",
-            "Open Output"
-        );
-        if (action === "Install Kedi") {
-            const term = vscode.window.createTerminal("Install Kedi");
-            term.show();
-            const py = await resolveInterpreterPath(
-                usePythonExtension,
-                explicitPath
-            );
-            if (py) {
-                const quotedPy = shellQuote(py);
-                term.sendText(
-                    `${quotedPy} -m uv pip install kedi || ${quotedPy} -m pip install kedi`
-                );
-            } else {
-                term.sendText("uv pip install kedi || pip install kedi");
-            }
-        } else if (action === "Open Output") {
-            outputChannel?.show(true);
-        }
+        void showStartupError(err);
         client = undefined;
     }
 }
 
-function shellQuote(value: string): string {
-    return `'${value.replace(/'/g, "'\\''")}'`;
+async function showStartupError(err: unknown): Promise<void> {
+    outputChannel?.appendLine(`Failed to start kedi-lsp: ${err}`);
+    const action = await vscode.window.showErrorMessage(
+        `Could not start Kedi language server. ${err}`,
+        "Select Python Interpreter", "Open Output",
+    );
+    if (action === "Select Python Interpreter") await selectPython();
+    if (action === "Open Output") outputChannel?.show(true);
 }
 
 async function isEmbeddedPythonPosition(
@@ -231,57 +226,27 @@ async function isEmbeddedPythonPosition(
 }
 
 async function resolveServerOptions(
+    context: vscode.ExtensionContext,
     usePythonExtension: boolean,
     explicitPath: string,
     serverCommand: string
-): Promise<ServerOptions | null> {
-    const workspaceServer = await resolveWorkspaceLocalServerCommand();
-    if (workspaceServer) {
-        outputChannel?.appendLine(
-            `Using workspace-local Kedi server: ${workspaceServer}`
-        );
+): Promise<ServerOptions> {
+    if (serverCommand && !explicitPath && !usePythonExtension) {
         return {
-            run: { command: workspaceServer, transport: TransportKind.stdio },
-            debug: { command: workspaceServer, transport: TransportKind.stdio },
+            run: { command: serverCommand, transport: TransportKind.stdio },
+            debug: { command: serverCommand, transport: TransportKind.stdio },
         };
     }
 
-    const py = await resolveInterpreterPath(usePythonExtension, explicitPath);
-    if (py) {
-        outputChannel?.appendLine(`Using Python interpreter: ${py}`);
-        return {
-            run: {
-                command: py,
-                args: ["-m", "kedi.lsp.server"],
-                transport: TransportKind.stdio,
-            },
-            debug: {
-                command: py,
-                args: ["-m", "kedi.lsp.server"],
-                transport: TransportKind.stdio,
-            },
-        };
-    }
-
-    outputChannel?.appendLine(
-        `Falling back to '${serverCommand}' on PATH (set kedi.lsp.pythonPath or install kedi into the active interpreter to override).`
-    );
+    const host = usePythonExtension || Boolean(explicitPath);
+    const py = host ? await resolveInterpreterPath(usePythonExtension, explicitPath) : await managedPython(context, outputChannel!);
+    if (!py) throw new Error("No host Python selected. Use Kedi: Select Python Interpreter. Host environments must have Kedi installed.");
+    outputChannel?.appendLine(`Using Python interpreter: ${py}`);
+    const args = [...(host ? [] : ["-I"]), "-m", "kedi.lsp.server"];
     return {
-        run: { command: serverCommand, transport: TransportKind.stdio },
-        debug: { command: serverCommand, transport: TransportKind.stdio },
+        run: { command: py, args, transport: TransportKind.stdio },
+        debug: { command: py, args, transport: TransportKind.stdio },
     };
-}
-
-async function resolveWorkspaceLocalServerCommand(): Promise<string | undefined> {
-    for (const folder of prioritizedWorkspaceFolders()) {
-        for (const parts of WORKSPACE_LOCAL_KEDI_LSP_CANDIDATES) {
-            const candidate = path.join(folder.uri.fsPath, ...parts);
-            if (await fileExists(candidate)) {
-                return candidate;
-            }
-        }
-    }
-    return undefined;
 }
 
 async function resolveInterpreterPath(
@@ -301,7 +266,8 @@ async function resolveInterpreterPath(
                 vscode.window.activeTextEditor?.document?.uri
             );
             if (envPath?.path) {
-                return envPath.path;
+                const resolved = await api.environments.resolveEnvironment(envPath);
+                return resolved?.executable?.uri?.fsPath;
             }
         }
     } catch (err) {
@@ -310,33 +276,6 @@ async function resolveInterpreterPath(
         );
     }
     return undefined;
-}
-
-function prioritizedWorkspaceFolders(): vscode.WorkspaceFolder[] {
-    const folders = Array.from(vscode.workspace.workspaceFolders ?? []);
-    const activeUri = vscode.window.activeTextEditor?.document.uri;
-    if (!activeUri) {
-        return folders;
-    }
-
-    const activeFolder = vscode.workspace.getWorkspaceFolder(activeUri);
-    if (!activeFolder) {
-        return folders;
-    }
-
-    return [
-        activeFolder,
-        ...folders.filter((folder) => folder.uri.toString() !== activeFolder.uri.toString()),
-    ];
-}
-
-async function fileExists(candidate: string): Promise<boolean> {
-    try {
-        await fs.promises.access(candidate, fs.constants.F_OK);
-        return true;
-    } catch {
-        return false;
-    }
 }
 
 async function getPythonApi(): Promise<any | undefined> {
@@ -350,6 +289,7 @@ async function getPythonApi(): Promise<any | undefined> {
     if (!ext.isActive) {
         await ext.activate();
     }
+    await ext.exports.ready;
     pythonApi = ext.exports;
     return pythonApi;
 }
