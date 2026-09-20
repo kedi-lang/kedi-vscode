@@ -412,9 +412,14 @@ with the same native Kedi semantics used by other templates. Output fields such
 as `[answer]` are invalid because a condition does not produce a user-visible
 binding.
 
-Kedi evaluates the rendered claim using the current agent profile and its
-available context. A claim that cannot be established is treated as `false`.
-The evaluation does not create a Kedi binding.
+Kedi evaluates the rendered claim using the current agent profile. It
+prioritizes the current context and relevant available tools. If neither
+establishes the answer, the evaluator may use reliable knowledge it already
+possesses. A relevant authoritative tool is used before answering a
+time-sensitive, private, or otherwise unestablished claim; stable facts do not
+require a redundant lookup. A contradicted or unknown claim is treated as
+`false`; missing context alone does not make a claim false. The evaluation does
+not create a Kedi binding.
 
 The trailing colon is the unambiguous boundary between both forms:
 
@@ -1031,7 +1036,7 @@ Define dataset-aware metrics with automatic iteration:
 
 Rules:
 - `> data: NAME:` defines the training dataset for the enclosing `@eval` suite and must return an iterable.
-- `> test_data: NAME:` (optional) defines a test dataset; when present, both train and test performance are reported.
+- `> test_data: NAME:` (optional) supplies rows preferred over same-named training rows by `--eval`. The command reports one selected score, not both. During optimization these rows are validation data used for candidate selection.
 - `> metric: metric_name(NAME):` iterates automatically over the dataset named `NAME`, binding the dataset name as a variable for each item.
 - Only one metric per `@eval` suite is allowed. Multiple metrics will raise a parse error.
 - Per-example results can be: `bool` (mapped to 1.0/0.0), `float`, or `(score, feedback)`.
@@ -1040,7 +1045,7 @@ Rules:
 
 Dataset items can follow two conventions:
 
-1. **`(input, expected_output)` tuples**: When the dataset yields two-tuples, the first element is bound to the dataset variable name in the metric, and the second is bound to a special `expected` variable. Use `None` as `expected_output` for analytical metrics where the metric computes correctness internally.
+1. **`(input, expected_dict)` tuples**: The input is bound to the dataset variable and the dictionary to `expected`. With `(input, None)`, the input is bound but `expected` is not injected. A tuple input paired with a non-list/dict/tuple scalar also splits. Other pairs, such as `("text", "label")`, remain raw rows in direct evaluation. Optimization splits every two-item tuple; expected dictionaries are portable across both paths.
 
 2. **Raw items**: Single values or `dict.items()` key-value pairs are bound directly to the dataset variable name.
 
@@ -1266,14 +1271,40 @@ enable scoped skill discovery.
   active model to classify intrinsic risk and allow or deny the call:
 
   ```kedi
+  > settings:
+      tool_reason: enabled
+
   > import: helpers
   > approval: `llm_approval`
   ```
 
-  `llm_approval` evaluates only the tool name, description, declared risk, and
-  call arguments. Approval requests do not currently include a call reason, so
-  the model judges with limited information. This helper is experimental and is
-  not a stable feature.
+  `tool_reason: enabled` in `> settings:` opts into an optional `reason: string`
+  argument on tools that may require
+  approval, including locally connected MCP tools. The default is disabled.
+  Use `tool_reason: disabled` to turn it off in a scope. These lexical settings
+  override `PydanticAdapter(tool_reason=True)` or `LangChainAdapter(tool_reason=True)`;
+  when omitted, the constructor default applies. Backtick Python expressions
+  must return a boolean; plain `true` and `false` are not accepted for this setting.
+  The setting is consumed by Kedi, not forwarded to the model provider. Enabling
+  it on an unsupported adapter raises an error.
+  Statically read-only tools without a risk resolver are unchanged. Runtime risk
+  checks still decide whether a call needs approval. The reason is available as
+  `ApprovalRequest.reason`, separately from validated `arguments`; it is not
+  forwarded to the actual tool or MCP server. A conflicting business argument
+  named `reason` is rejected when enabling this feature.
+
+  `llm_approval` requires this option enabled in settings or on the adapter; otherwise it raises
+  an error before asking a model. A supplied reason remains optional and is
+  untrusted context, not evidence of user authorization. The helper evaluates
+  the tool name, description, declared risk, arguments, and reason when present.
+  Its structured decision includes assessed risk, authorization confidence, an
+  allow/deny decision, and a concise rationale. Kedi prints those four values as
+  an approval report. The same report becomes `ApprovalDecision.reason`; when a
+  call is denied, Pydantic AI and LangChain return it to the calling model as the
+  denied tool result instead of discarding the assessment. Authorization
+  confidence describes the available evidence and does not turn model-authored
+  text into trusted user permission. The helper remains experimental and is not
+  a complete authorization boundary.
 - `> hooks:` registers Python lifecycle handlers for subsequent agent runs:
 
   ````kedi
@@ -1477,7 +1508,7 @@ enable scoped skill discovery.
   are admitted before model-visible history is committed, while native tool-call
   IDs, error results, approval flow, and existing Kedi artifact wrappers remain
   intact.
-- `> settings:` — set active model configuration for subsequent procedure
+- `> settings:` — set active adapter/model configuration for subsequent procedure
   captures and prompt calls. Values are `name: value` lines; plain values are
   parsed as simple scalars (`true`, `false`, numbers, `null`) and backtick
   expressions are evaluated as Python for complex values. Kedi keeps the merged
@@ -1496,6 +1527,18 @@ enable scoped skill discovery.
   settings; its default sandbox is `workspace-write` so read/write harness tools
   are eligible unless narrowed by settings. Unknown setting names are parser/LSP
   errors.
+  `tool_reason` is a Kedi-owned approval setting for Pydantic AI and LangChain,
+  accepting `enabled`, `disabled`, or a backtick Python boolean expression:
+
+  ````kedi
+  ```
+  import os
+  ```
+
+  > settings:
+      tool_reason: `os.getenv("TOOL_REASON_FOO_BAR") is not None`
+  ````
+
   Use backticks when the setting value should be a real Python object instead
   of a string or simple scalar:
 
@@ -2655,6 +2698,84 @@ checkpoint, and replay does not repeatedly append epochs. Invocation usage is
 collected independently of retained LangChain history, so archival cannot erase
 usage already incurred.
 
+Applications that need their own deterministic retention or summarization policy
+can pass `history_processor=` to either framework adapter. The callback receives
+detached framework-native messages and read-only metadata before every logical
+model request:
+
+```python
+from typing import TypeVar
+
+from kedi.agent_adapter import (
+    HistoryProcessorContext,
+    LangChainAdapter,
+    PydanticAdapter,
+)
+
+MessageT = TypeVar("MessageT")
+
+
+def keep_recent_cycles(ctx: HistoryProcessorContext[MessageT]) -> list[MessageT]:
+    editable = [group for group in ctx.groups if group.closed and not group.protected]
+    retained = {group.group_id for group in editable[-4:]}
+    retained.update(group.group_id for group in ctx.groups if group.protected)
+    return [
+        message
+        for group in ctx.groups
+        if group.group_id in retained
+        for message in ctx.messages[group.entry_start : group.entry_end]
+    ]
+
+
+pydantic_adapter = PydanticAdapter(history_processor=keep_recent_cycles)
+langchain_adapter = LangChainAdapter(history_processor=keep_recent_cycles)
+```
+
+`HistoryProcessorContext` includes `adapter_shortname`, `model_id`, the one-based
+`request_index`, the active `cache_epoch`, a conservative `estimated_tokens`
+value, entry metadata, and validated atomic groups. Its `messages` are native
+Pydantic AI or LangChain messages, not Kedi's portable conversation turns and
+not the entire wire request. System instructions, tool schemas, model settings,
+approval state, and routing metadata outside history are not editable here.
+
+The callback may be synchronous or asynchronous and must return a non-empty
+sequence of native messages. Synchronous callbacks run in a worker thread so a
+costly local policy cannot block the adapter event loop. Returning `ctx.messages`
+or a semantically equivalent fresh sequence is a no-op. Kedi clones callback
+input and accepted output, rejects split tool-call/result lifecycles, orphan
+results, protected-barrier crossings, changed current request tails, and removal
+or mutation of pending/provider-required records before model I/O. Callback
+failures do not fall back to unprocessed history.
+
+Atomic groups currently represent user/assistant cycles, including their tool
+exchanges. Only entire eligible groups can be removed, reordered within protected
+boundaries, or replaced by native text summaries. The callback cannot selectively
+remove individual tool exchanges from the ongoing user cycle; `history_archive=`
+provides exact archival for long tool loops. Serialized message dictionaries are
+rejected. Deep copying preserves native classes and typed tool payloads, but an
+enabled no-op still has copying/inspection overhead. Cancelling a sync callback
+discards its result without forcibly stopping its worker thread or side effects.
+
+Accepted history replaces the framework's durable in-run history, so later tool
+steps and the next successfully committed Kedi turn observe the same edit.
+Incompatible edits disable stale response-ID continuation for the affected
+request and stage one bounded cache generation per actual rewrite. Failed or
+cancelled turns do not commit those staged generations. With `history_archive=`,
+exact archival runs first and the custom callback receives its checkpointed
+native result. A configured Pydantic `ProcessHistory` capability conflicts with
+this API; compose that policy inside `history_processor` instead. This is a
+Python adapter API in v1 and does not add a DSL history/compaction mode.
+
+Within a Kedi conversation lane, the fact that history was rewritten persists
+after success so an old server-owned conversation ID cannot reactivate on the
+next turn. Automatic response-ID continuation can resume from new responses;
+fixed stale IDs remain disabled. Model-level defaults are overridden for these
+requests without mutating the original model. Native Pydantic callers managing
+`message_history=` themselves must reuse `result.all_messages()` and compatible
+settings; appending `new_messages()` to unprocessed old history restores deleted
+messages. Nested native runs use independent processor counters and pending
+transport resets.
+
 ### Native LangChain settings and Codex sessions
 
 `LangChainAdapter(model, model_settings=...)` preserves native settings rather
@@ -3663,10 +3784,10 @@ Rules:
 - Multiple optimize spans can be defined per procedure.
 - Optimization requires:
   1. A matching `@eval: procedure_name` suite with training data (`> data:`)
-  2. The `--optimize` flag when running evaluations
-  3. An optimizer selected via `--optimizer` (default: `gepa`)
+  2. The `--optimize` flag, independently or together with `--eval`
+  3. An optimizer selected via `--optimizer` (default: `mock`; select `gepa` explicitly)
 - The optimizer uses training data to improve prompts iteratively.
-- Test data (if provided) is used to measure generalization after optimization.
+- Test data (if provided) participates in validation and candidate selection. Keep separate untouched final evaluation data to measure generalization.
 
 ## AI-Generated Procedures
 
