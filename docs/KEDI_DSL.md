@@ -1081,14 +1081,14 @@ enable scoped skill discovery.
 
 ```kedi
 > adapter: pydantic
-> model: groq:qwen/qwen3-32b
+> model: openai:gpt-5.6-luna
 > effort: low
 > approval: allow
 > system: Answer concisely and avoid extra narration.
 
 > profile: fast:
     > adapter: pydantic
-    > model: groq:qwen/qwen3-32b
+    > model: openai:gpt-5.6-luna
     > effort: minimal
     > settings:
         temperature: 0.2
@@ -1098,7 +1098,7 @@ enable scoped skill discovery.
         Adapt examples for <audience>.
 > profile: quality:
     > agent: codex
-    > model: openrouter/google/gemini-3-flash-preview
+    > model: gpt-5.6-luna
     > effort: high
     > system: Be precise and cite the relevant tool output.
     > settings:
@@ -1109,10 +1109,17 @@ enable scoped skill discovery.
         args: `["run", "--mcp"]`
     > use: web_search
 > profile: acp_local:
-    > agent:
-        acp: `["vsh", "run", "--acp"]`
+    > agent: acp:
+        command: `["vsh", "run", "--acp"]`
     > settings:
         cwd: /tmp/project
+> profile: cloud_researcher:
+    > agent: a2a:
+        endpoint: https://agents.example.com
+        auth:
+            scheme: bearer
+            token_env: RESEARCH_AGENT_TOKEN
+        task_timeout: 21600
 ```
 
 - `> adapter: name` — select an agent framework adapter for following LLM
@@ -1120,11 +1127,11 @@ enable scoped skill discovery.
   `pydantic`, `dspy`, and `langchain`.
 - `> agent: name` — select an agent harness adapter for following LLM calls
   in the current lexical scope. Built-in harness shortnames are `claude`,
-  `codex`, and `acp`. ACP commands can also be declared in multiline form:
+  `codex`, `acp`, and `a2a`. ACP commands use a typed connection body:
 
   ```kedi
-  > agent:
-      acp: uv run acp server
+  > agent: acp:
+      command: uv run acp server
   ```
 
   Literal adapter names are validated by the LSP and at runtime. `> agent:`
@@ -1132,8 +1139,15 @@ enable scoped skill discovery.
   adapters; use an inline Python value only when the selected name must be
   determined dynamically at runtime.
 
-  The command value may be plain text or an inline Python expression that
-  evaluates to a string or string sequence.
+  The ACP command may be plain text or an inline Python expression that
+  evaluates to a string or string sequence. A2A connections use
+  `> agent: a2a:` with a required `endpoint`, optional `auth` block, and
+  optional positive `request_timeout`, `task_timeout`, and `poll_interval`
+  fields. The auth block supports Basic (`username` plus `password_env` or
+  `password_file`), Bearer (`token_env` or `token_file`), and API key
+  (`api_key_env` or `api_key_file`, with optional `header`). Generic
+  `credential_env`/`credential_file` aliases and Python credential providers
+  are also accepted. Exactly one credential source is permitted.
 - `> model: name` — set the active model for subsequent procedure captures (plain
   name or `` `expression` ``). With the Pydantic adapter, `codex/<model>` selects
   a Codex-authenticated Responses model on Python 3.11+ through the optional
@@ -1629,9 +1643,16 @@ enable scoped skill discovery.
   inside a procedure. `> settings:` accepts only adapter/model settings and
   does not accept `codemode`.
 
-  ACP always requires an explicit stdio command, either in multiline
-  `> agent:` syntax or through `ACPAdapter(command=...)`. Kedi does not resolve
+  ACP always requires an explicit stdio command, either in a
+  `> agent: acp:` body or through `ACPAdapter(command=...)`. Kedi does not resolve
   ACP commands from CLI options or environment variables.
+
+  A2A leaves model selection, tools, MCP, CodeMode, approvals, and execution
+  policy to the remote agent. Plain HTTP is accepted only for loopback
+  endpoints; remote endpoints require HTTPS and cannot contain credentials,
+  query strings, or fragments. Generic peers provide raw text. Typed template
+  output requires the peer to advertise Kedi's versioned structured-output
+  extension. Local observation timeouts do not cancel remote work.
 - Multiline `> system:` bodies are newline-joined like `>>` blocks, but they
   are read-only: literal text, `<name>` substitutions, and inline Python
   substitutions such as ``<`args.name`>`` are allowed; LLM outputs and procedure
@@ -2246,6 +2267,7 @@ schemas. Stateful replay is a separate capability:
 | DSPy | Yes | No | No |
 | WebGPU | Yes | No | No |
 | ACP | No | No | No |
+| A2A | No | No | Yes |
 
 The LSP derives diagnostics from these capability flags. Enabling artifacts
 with an adapter that cannot carry compact refs and register the bounded
@@ -2453,8 +2475,10 @@ For `output_schema`, `Annotated[type, "description"]` keeps `type` as the field
 type and publishes the second argument as the model-facing field description.
 Adapters with structured-output support accept both forms; supplying a schema
 takes precedence over a prebuilt type. An adapter must receive at least one output
-specification. ACP currently advertises no structured-output capability, so its
-`produce()` surface raises `NotImplementedError` for either form.
+specification. ACP advertises no structured-output capability, so its
+`produce()` surface raises `NotImplementedError` for either form. A2A support is
+endpoint-specific: `produce()` requires a peer advertising Kedi's versioned
+structured-output extension and otherwise fails before sending the task.
 
 ### Agent adapter capability contract
 
