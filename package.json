@@ -88,6 +88,12 @@
           "default": "off",
           "description": "Trace level for the LSP client/server channel (visible in the 'Kedi Language Server' output panel)."
         },
+        "kedi.codemode.preloadWarningThreshold": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 5,
+          "description": "Warn when a static CodeMode preload_tools list contains more than this many unique tools. This is a lint threshold, not a runtime limit."
+        },
         "kedi.embeddedPython.enable": {
           "type": "boolean",
           "default": true,

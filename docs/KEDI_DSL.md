@@ -1072,7 +1072,8 @@ Dataset items can follow two conventions:
 ## Agent Profiles and Tools
 
 Kedi routes LLM calls through agent adapters. Use `> adapter:`, `> agent:`,
-`> model:`, `> effort:`, `> approval:`, `> hooks:`, `> skills:`, `> system:`, `> mcp:`, `> profile:`, and `> use:`
+`> model:`, `> requires:`, `> effort:`, `> approval:`, `> hooks:`, `> skills:`,
+`> system:`, `> mcp:`, `> profile:`, and `> use:`
 to choose adapter implementations, choose models, set reasoning effort, set
 agent instructions, load MCP tools, expose Kedi procedures as agent tools, and
 enable scoped skill discovery.
@@ -1099,6 +1100,7 @@ enable scoped skill discovery.
 > profile: quality:
     > agent: codex
     > model: gpt-5.6-luna
+    > requires: stream_events
     > effort: high
     > system: Be precise and cite the relevant tool output.
     > settings:
@@ -1148,6 +1150,30 @@ enable scoped skill discovery.
   (`api_key_env` or `api_key_file`, with optional `header`). Generic
   `credential_env`/`credential_file` aliases and Python credential providers
   are also accepted. Exactly one credential source is permitted.
+- `> requires: capability` declares a capability that the selected adapter must
+  provide before Kedi performs model I/O. Use the block form for several
+  requirements:
+
+  ```kedi
+  > requires:
+      structured_output
+      tool_registration
+      stream_events
+  ```
+
+  Requirements are additive across lexical scopes and applied profiles, and
+  duplicate names are removed while preserving declaration order. Literal
+  adapter selections are checked by the LSP. Dynamic selections defer the
+  check to runtime, but still fail before dependent work begins. With A2A peer
+  capability negotiation, Kedi may fetch an authenticated
+  Agent Card first, then rejects unsupported requirements before sending a task.
+  Requirement names come from the same registry:
+  `structured_output`, `tool_registration`, `mcp`,
+  `profile_override`, `model_override`, `effort`, `settings`, `codemode`,
+  `native_approvals`, `native_approval_handler`, `subagents`,
+  `background_subagents`, `artifacts`, `native_artifacts`,
+  `stateful_history`, `history_replay`, `native_compaction`, `stream_events`,
+  and `hooks`.
 - `> model: name` — set the active model for subsequent procedure captures (plain
   name or `` `expression` ``). With the Pydantic adapter, `codex/<model>` selects
   a Codex-authenticated Responses model on Python 3.11+ through the optional
@@ -1599,13 +1625,27 @@ enable scoped skill discovery.
 
   ```kedi
   > codemode:
+      preload_tools:
+          lookup_release
+          list_versions
       default_search_limit: 10
       max_search_limit: 50
-      max_hydrated_tools: 32
-      max_nested_calls: 48
+      max_hydrated_tools: 64
+      max_nested_calls: 64
       max_concurrent_calls: 8
       request_timeout: 60
   ```
+
+  `preload_tools` accepts one exact exposed tool name or an indented list. Kedi
+  resolves these names atomically before the first model request, hydrates their
+  schemas into the run-local sandbox, and includes those schemas in the first
+  CodeMode instruction. Preloading never executes a tool and does not expose
+  its result. Unknown or ambiguous names, duplicate catalog names, and
+  `max_hydrated_tools` overflow fail before model I/O without partially
+  hydrating the run. Aliased tools use their exposed names. Preloaded tools
+  count toward `max_hydrated_tools` and remain hydrated after a sandbox restart.
+  The LSP warns when a static list exceeds five unique names by default; editor
+  configuration may change this lint threshold without changing runtime limits.
 
   It replaces the model-facing application tool catalog with
   `search_tools`, `get_tool_schema`, and `execute_code`. Search returns only
@@ -1660,7 +1700,8 @@ enable scoped skill discovery.
   literal code fence marker.
 - `> profile: name:` — define a reusable profile with nested `> agent:`,
   `> adapter:`, `> model:`, `> effort:`, `> approval:`, `> system:`,
-  `> settings:`, `> mcp:`, `> output:`, `> subagent:`, `> workflow:`, and/or `> use:`
+  `> settings:`, `> requires:`, `> mcp:`, `> output:`, `> subagent:`,
+  `> workflow:`, and/or `> use:`
   members. A profile that delegates may also set `> max_agents: N`.
 - Profile docstrings: if the first statement inside a profile body is a block
   comment, its body becomes profile documentation and is shown in editor hovers.
@@ -1672,7 +1713,8 @@ enable scoped skill discovery.
   `> agent:` and `> adapter:` because those select different adapter classes.
   Use `> agent:` only for `agent-harness` adapters and `> adapter:` only for
   `agent-framework` adapters.
-- Editor diagnostics use adapter capability metadata. If the selected adapter
+- Editor diagnostics use adapter capability metadata. An explicit
+  `> requires:` mismatch is an error. If the selected adapter
   does not currently support structured template outputs, the LSP reports an
   error on the relevant output field and the adapter raises when that template
   runs. `> use:` tool registration and `> mcp:` servers remain capability
@@ -1875,6 +1917,44 @@ DSPy currently uses the stdio MCP path through `dspy.Tool.from_mcp_tool` and
 `ReAct.acall`.
 
 ### `> use:` semantics
+
+Procedures may declare model-facing tool metadata before executable body
+statements. A leading procedure docstring may appear before this declaration:
+
+```kedi
+@read_release(version: str) -> str:
+    ###
+    Read one release from the local index.
+    ###
+    > tool:
+        name: lookup_release
+        description: Read notes for one exact release version.
+        risk: read_only
+        retries: 2
+        retry_on:
+            TimeoutError
+            ConnectionError
+    = `release_index[version]`
+
+> use: read_release
+```
+
+`name` changes only the exposed tool name; the source procedure remains
+`read_release`. `description` overrides the model-facing description while the
+procedure docstring remains available to introspection. `risk` is one of
+`read_only`, `mutating`, or `sensitive` and defaults to `mutating`. `retries`
+is a nonnegative integer and means that at most `retries + 1` body attempts are
+made. `retry_on` is an indented list of visible `Exception` class names; when
+omitted, ordinary `Exception` failures are eligible.
+Exception classes are resolved when the procedure is defined. Rebinding an
+exception name later cannot change that procedure's retry policy.
+
+Retries cover only failures raised while the procedure body executes. Argument
+validation, approval, hooks, result validation, cancellation,
+`KeyboardInterrupt`, and `SystemExit` are never retried. Each native retry
+receives a fresh copy of the validated arguments, so mutations from a failed
+attempt do not leak into the next one. Only one `> tool:` declaration is
+allowed per procedure.
 
 Single-line form:
 
@@ -2319,8 +2399,8 @@ until their underlying protocol gains tool support.
 ### Tool approval and sensitive files
 
 Kedi classifies tool calls as `read_only`, `mutating`, or `sensitive`. Custom
-Python tools default to `mutating`; choose a different classification with the
-Python API when appropriate:
+tools default to `mutating`; choose a different classification with `> tool:`
+for a Kedi procedure or the Python API for a Python callable:
 
 ```python
 @kedi.tool(risk="read_only")
@@ -2361,7 +2441,11 @@ class Review:
     summary: str
 
 
-@kedi.query(cache=True, settings={"temperature": 0.2})
+@kedi.query(
+    cache=True,
+    settings={"temperature": 0.2},
+    requires=("structured_output",),
+)
 def review_snippet(language: str, code: str) -> Review:
     """kedi
     >> Review this <language> snippet.
@@ -2383,7 +2467,10 @@ Rules:
   env. Parse caching is always keyed by the exact source hash.
 - `model=`, `adapter=`, and `agent=` override the configured backend only for
   that callable. Use `adapter=` for frameworks (`pydantic`, `dspy`,
-  `langchain`) and `agent=` for harnesses (`claude`, `codex`, `acp`).
+  `langchain`) and `agent=` for harnesses (`claude`, `codex`, `acp`, `a2a`).
+- `requires=` on `query` and `bind` accepts canonical adapter capability names.
+  Unknown names are rejected when the decorator is configured; unsupported
+  capabilities fail before that callable performs model I/O.
 - `approval=` accepts `"allow"`, `"deny"`, an `ApprovalPolicy`, or a callable.
   `query` and `bind` apply it only to that callable's registered tools.
 - `skills=True` on `kedi.configure`, `kedi.context`, `@kedi.query`, or
@@ -3515,7 +3602,12 @@ class InternalPayload(BaseModel):
 signature and docstring are used for schema and description metadata.
 
 ```python
-@kedi.tool(name="search_docs", description="Search local project notes.", retries=1)
+@kedi.tool(
+    name="search_docs",
+    description="Search local project notes.",
+    retries=1,
+    retry_on=(TimeoutError,),
+)
 def search_docs(query: str) -> str:
     return "..."
 ```
@@ -3524,6 +3616,10 @@ Register tools through `kedi.configure(tools=[...])`, `kedi.context(tools=[...])
 or per-callable `@kedi.query(tools=[...])` / `@kedi.bind(tools=[...])`. A Kedi
 program still uses `> use: search_docs` to expose that registered callable to
 the active prompt.
+
+`retry_on` accepts `Exception` classes rather than names in the Python API.
+Passing an empty tuple disables retries even when `retries` is positive. As on
+the native surface, only callable-body failures are retried.
 
 ### Cache Helpers
 

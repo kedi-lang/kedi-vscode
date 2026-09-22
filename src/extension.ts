@@ -148,6 +148,10 @@ async function startClient(
     const explicitPath = cfg.get<string>("lsp.pythonPath", "");
     const serverCommand = cfg.get<string>("lsp.serverCommand", "");
     const trace = cfg.get<string>("lsp.trace.server", "off");
+    const preloadWarningThreshold = cfg.get<number>(
+        "codemode.preloadWarningThreshold",
+        5
+    );
 
     let serverOptions: ServerOptions;
     try {
@@ -167,9 +171,11 @@ async function startClient(
         traceOutputChannel: outputChannel,
         synchronize: {
             fileEvents: vscode.workspace.createFileSystemWatcher("**/*.kedi"),
+            configurationSection: "kedi",
         },
         initializationOptions: {
             trace,
+            codemode: { preloadWarningThreshold },
         },
         middleware: {
             provideHover: async (document, position, token, next) => {
