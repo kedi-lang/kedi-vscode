@@ -398,7 +398,7 @@ on the selected path do not execute.
 [minimum_population: int] = `5_000_000`
 [result] = unknown
 
-> if: <city> has more than `minimum_population` residents
+> if: <city> has more than <`minimum_population`> residents
   [result] := major city
 > else:
   [result] := smaller city
@@ -407,10 +407,12 @@ on the selected path do not execute.
 ```
 
 A template condition has no trailing `:` after its claim. Plain text,
-`<name>` substitutions, procedure calls, and inline Python values are rendered
-with the same native Kedi semantics used by other templates. Output fields such
-as `[answer]` are invalid because a condition does not produce a user-visible
-binding.
+`<name>` substitutions, procedure calls, and Python substitutions such as
+``<`minimum_population`>`` are rendered with the same native Kedi semantics
+used by other templates. Bare backtick expressions are rejected during
+parsing; angle brackets make their place in the rendered claim explicit.
+Output fields such as `[answer]` are invalid because a condition does not
+produce a user-visible binding.
 
 Kedi evaluates the rendered claim using the current agent profile. It
 prioritizes the current context and relevant available tools. If neither
@@ -428,7 +430,7 @@ The trailing colon is the unambiguous boundary between both forms:
   # Deterministic: evaluate is_ready as an exact Python bool.
   [mode] = deterministic
 
-> if: `is_ready`
+> if: <`is_ready`>
   # Model-classified: render the Python value into the claim.
   [mode] = classified
 ```
