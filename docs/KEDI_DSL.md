@@ -267,8 +267,18 @@ runtime type and attaches the string as schema/LLM field description metadata wi
 using inline Python. The description must be a single-line string literal inside the
 `Annotated[...]` arguments; standalone string literals are not valid type annotations.
 Adapters that expose JSON schema, such as Pydantic AI and LangChain, pass this metadata
-as the field description. `Annotated[type]` still resolves as `type`, but the LSP warns
-because no description metadata was provided; extra `Annotated[...]` metadata is ignored.
+as the field description. Descriptions inside `list`, `dict`, union, and optional
+annotations describe the corresponding item, value, or union branch:
+
+```kedi
+>> The contributors are [contributors: list[Annotated[str, "Full name of each contributor"]]].
+```
+
+`Annotated[type]` still resolves as `type`, but the LSP warns because no
+description metadata was provided. The description must be the first metadata
+argument you write; metadata inherited from a type alias such as `Probability`
+may precede it. Other string metadata is ignored. Computed Python annotations
+retain non-string Pydantic validation metadata and Jev criteria.
 
 ```kedi
 >> Extract the customer as [name: Annotated[str, "Full customer name"]].
@@ -1403,7 +1413,7 @@ enable scoped skill discovery.
   ````
 
   The supported events are `user_prompt_submit`, `pre_tool_use`,
-  `post_tool_use`, and `post_tool_use_failure`. Prompt and pre-tool handlers
+  `post_tool_use`, `post_tool_use_failure`, and `post_tool_result_failure`. Prompt and pre-tool handlers
   may return a typed `continue`, `deny`, or `edit` decision. Post handlers are
   observers and must return `None`. Tool arguments are canonicalized before
   `pre_tool_use`; an edit is validated again before approval and execution.
@@ -1411,6 +1421,10 @@ enable scoped skill discovery.
   `post_tool_use_failure` is emitted only after tool execution starts. Its event
   records the observed execution duration and whether execution was interrupted;
   pre-hook and approval denials are not execution failures.
+  `post_tool_result_failure` observes a failure after the tool body returned
+  (for example artifact admission or a post-success hook). Its `tool_call`
+  record retains the native body output when available. Such failures do not
+  trigger an automatic body retry.
 
   Handlers run in registration/source order. Each edit becomes the next
   handler's input, and denial stops the chain. Adapter-instance handlers run
@@ -1733,7 +1747,7 @@ enable scoped skill discovery.
   literal code fence marker.
 - `> profile: name:` — define a reusable profile with nested `> agent:`,
   `> adapter:`, `> model:`, `> effort:`, `> approval:`, `> system:`,
-  `> settings:`, `> requires:`, `> mcp:`, `> output:`, `> subagent:`,
+  `> settings:`, `> requires:`, `> budget:`, `> mcp:`, `> output:`, `> subagent:`,
   `> workflow:`, and/or `> use:`
   members. A profile that delegates may also set `> max_agents: N`.
 - Profile docstrings: if the first statement inside a profile body is a block
@@ -1753,6 +1767,28 @@ enable scoped skill discovery.
   runs. `> use:` tool registration and `> mcp:` servers remain capability
   warnings: when an adapter later advertises support for that feature, the same
   Kedi code stops warning without syntax changes.
+
+### Run budgets
+
+```kedi
+> budget:
+    request_limit: 10
+    tool_attempt_limit: 20
+```
+
+Each field is optional, but at least one is required. Values are nonnegative
+integers; `0` prohibits new operations of that kind. A request is counted at
+each actual model generation, including tool-loop and output-repair turns.
+An attempt is counted when a Kedi-managed tool body starts; each body retry
+counts again. Argument validation and approval denial do not consume attempts.
+Nested procedure and subagent budgets add ceilings without resetting or
+relaxing ancestor ceilings. Budgets do not intercept arbitrary provider calls
+made directly from embedded Python or unobservable remote tool executions.
+Fallback model generations are charged separately. With a finite request limit,
+provider SDK retries must be disabled (`max_retries=0`); an enabled or opaque
+provider retry policy is rejected before generation rather than undercounted.
+CodeMode control calls do not count as application tool attempts; each nested
+application body and each of its retries counts once on both framework adapters.
 
 ### Subagents
 
@@ -3253,7 +3289,7 @@ directory by default):
 ```python
 with kedi.interactive(cwd="examples/cells") as session:
     session.execute(
-        "> import: helpers\n= `answer`",
+        "> import: helpers\n> show: `answer`",
         source_name="answer.kedi",
     )
 ```
@@ -3287,6 +3323,14 @@ existing process variables. Configure `KEDI_ADAPTER_MODEL` there or select a
 model with `> model:` in an earlier Kedi cell. Calling `load_dotenv()` inside a
 host Python cell changes only its isolated worker process, not the server that
 owns agent adapters; browser Python cannot read the host project's `.env`.
+
+Missing native Pydantic AI provider SDKs are installed on demand in the notebook
+server environment, using only the provider group requested by Pydantic AI.
+Other provider groups are not installed. Existing package versions are preserved,
+and earlier cell statements are never replayed after installation. First use
+requires package-index access; installation failures or dependency conflicts
+surface as cell errors. This behavior is notebook-specific and does not change
+ordinary CLI or Python API model construction.
 
 Use **Secret Manager** in the notebook top bar to configure model names,
 provider credentials, and other environment values without placing them in a
@@ -3326,6 +3370,8 @@ browser mode embedded Python operations are bridged to one persistent Pyodide
 worker. In host mode they are bridged to one persistent worker launched by the
 managed environment's executable, so Python objects remain available to later
 cells without modifying the selected base interpreter.
+The bundled `filesystem` module uses Pyodide's temporary virtual filesystem in
+browser mode and the notebook working directory on disk in host mode.
 
 The browser runtime begins loading when the page opens rather than when the
 first cell is run. Its worker and installed packages remain available for the
