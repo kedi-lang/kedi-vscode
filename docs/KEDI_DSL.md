@@ -387,9 +387,9 @@ never become Kedi bindings. `> else:` is optional. There is no
 `elif`; use a nested `> if:` when another condition is required.
 
 Directives selected inside a branch apply only within that branch. Existing
-Kedi return behavior remains unchanged: a return in a selected body contributes
-to the scope's last return value; it does not introduce Python-style early
-return.
+The first evaluated `=` in a selected body ends the enclosing procedure or
+regular program. Other branches remain valid return sites; later statements
+on the selected path do not execute.
 
 ### Template conditions
 
@@ -739,7 +739,12 @@ def helper(x):
 
 ## Returns
 
-Lines starting with `=` return values:
+The first evaluated `=` returns a value and ends the current procedure or
+regular program invocation. Statements after a definitely terminal path are
+rejected before execution. Different reachable branches may each return.
+Already started work is drained under the normal failure/cleanup contract.
+
+These are separate examples of return forms:
 
 ```kedi
 @get_value():
@@ -748,10 +753,14 @@ Lines starting with `=` return values:
 
 # Direct return
 = The answer is <value>
+```
 
+```kedi
 # Python return
 = `compute_result()`
+```
 
+```kedi
 # Multiline return with backslash continuation
 = Start \
   middle \
@@ -759,6 +768,28 @@ Lines starting with `=` return values:
 ```
 
 Whitespace is trimmed only at line ends, internal spaces preserved.
+
+### Display Without Returning
+
+`> show:` displays text or a value once and continues execution:
+
+```kedi
+[city] = Ankara
+> show: The selected city is <city>.
+> show: `len(city)`
+```
+
+Show is an executable statement, not an inherited setting. Bare text is
+literal; substitutions and inline Python use their normal semantics. New
+output captures are rejected. Show does not implicitly call a model, although
+reading an existing pending capture resolves its computation. Output is not
+automatically added to model history. Python `print` remains available.
+
+Notebook/IDLE root returns are rejected before fragment execution, including
+returns inside root branches and loops. Use show instead. Procedures defined
+or called there keep normal typed returns. IDLE also accepts `:show` as an
+alias, recorded as native `> show:`. Old user files are not silently rewritten;
+migrate only intended displays, retaining genuine procedure/program returns.
 
 ## Custom Types
 
@@ -3204,13 +3235,12 @@ with kedi.interactive() as session:
     = `base + 2`
 """.strip()
     )
-    assert session.execute("= `add_two()`") == 42
+    session.execute("> show: `add_two()`")  # displays 42
 ```
 
-`execute()` returns the same native-value boundary as `run_main()`: an `int`
-remains an `int`, and an explicit Kedi string-rendering expression remains the
-way to request rendered text. A fragment without a top-level return produces
-`None`.
+`execute()` returns `None`; interactive root returns are forbidden. Use
+`> show:` for output and bindings for persistent values. Procedure returns
+retain their native type; display does not replace their return contract.
 
 Every fragment receives a distinct traceback identity such as
 `<interactive:1>`. Pass `source_name=` when an editor or notebook has a better
@@ -3390,7 +3420,7 @@ with kedi.interactive() as session:
     kedi.dump_session(session, snapshot)
 
 with kedi.load_session(snapshot) as session:
-    assert session.execute("= `add_two()`") == 42
+    session.execute("> show: `add_two()`")  # displays 42
 ```
 
 Snapshots are strict and all-or-nothing. Before touching the destination,
@@ -3496,11 +3526,10 @@ server, and falls back to plain input for unusually large fragments so typing
 remains responsive. Highlighted, multiline, and ordinary input share the same
 REPL history.
 
-`:show <expression>` is a terminal-only meta command, not Kedi syntax. It
-evaluates any expression accepted on the right-hand side of a Kedi return and
-prints its value. For example, `:show <name>` renders a substitution, while
-``:show `value` `` inspects a native Python/Kedi value. This keeps forbidden
-top-level substitutions out of normal `.kedi` files.
+`:show <expression>` is an IDLE alias for native `> show:`. It displays once
+and continues without returning or introducing output captures. For example,
+`:show <name>` renders a substitution, while ``:show `value` `` displays a
+Python/Kedi value. Saved fragment sources use the native form.
 
 `:dump` atomically saves the current interactive session. The first dump uses
 an automatically generated path under `~/.kedi/sessions`; later dumps in the
