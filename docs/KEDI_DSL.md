@@ -1579,6 +1579,66 @@ enable scoped skill discovery.
   provider continuation internally because its public message result does not
   expose a stable cross-provider compaction marker.
 
+  Pydantic and LangChain also support an opt-in native history processor:
+
+  ```kedi
+  @keep_recent(ctx: Any) -> list[Any]:
+      = `ctx.keep_recent_groups(4)`
+
+  > history:
+      enabled: true
+      processor: `keep_recent`
+  ```
+
+  A predicate can gate processing without disabling history:
+
+  ```kedi
+  @needs_compaction(state: Any) -> bool:
+      = `state.estimated_tokens >= 80_000`
+
+  > history:
+      enabled: true
+      processor: `keep_recent`
+      processor_condition: `needs_compaction`
+  ```
+
+  `processor_condition` receives a frozen `HistoryProcessorState` before each
+  logical model request, including tool-loop requests. Its exact `bool` result
+  determines whether the processor runs. `estimated_tokens` describes candidate
+  history, not the complete wire request. The state also carries
+  `adapter_shortname`, `model_id`, one-based `request_index`, `cache_epoch`, and
+  opaque `history_version`; a true result gives the processor the same history
+  revision. A false result skips processor cloning and rewrite validation but
+  not ordinary request validation. The predicate may be sync or async;
+  exceptions and non-boolean results fail before model transport. Without a
+  condition, processing remains unconditional. A condition-only lexical
+  override inherits the effective processor. Selecting a new processor without
+  a condition clears an inherited condition; a non-null condition without any
+  effective processor is invalid.
+
+  The callable receives detached `HistoryProcessorContext` native messages before
+  each logical model request, including tool-loop requests. It may be sync or
+  async and returns a sequence of the same framework's native message types.
+  `keep_recent_groups(n)` retains the last `n` closed, unprotected groups plus all
+  protected, unfinished, and current-request groups, without breaking tool
+  lifecycles. `n` must be a nonnegative integer, not a boolean. `group.origins`
+  exposes known run/source/tool lineage outside the model-visible message content.
+  Unknown lineage remains absent; it is not inferred from assistant text.
+
+  The `processor` field is lexical: omission inherits, while an explicit
+  ``processor: `None` `` clears the callback for that scope. Python constructor
+  `history_processor=` defaults are not mutated. `enabled` still controls
+  conversation continuity; disabled history does not disable processing of an
+  invocation's ephemeral tool loop. Only adapters advertising `history_processing`
+  accept an active processor. No-op callbacks preserve native message identity
+  and cache generation. A validated rewrite invalidates stale continuation and
+  stages a new cache generation; outer failure/cancellation does not commit it.
+  Rewriting earlier history may reduce provider prefix-cache reuse. Kedi warns
+  about this at processor configuration sites, including external callables.
+  A condition can reduce how often processing runs but cannot guarantee prefix
+  preservation or a provider cache hit. A semantic no-op preserves native
+  message identity and cache generation.
+
   Kedi also contains an adapter-neutral, deterministic history processor and
   transactional checkpoint foundation for future Kedi-owned compaction. The
   semantic summarizer that will produce those checkpoints is tracked in
