@@ -1952,6 +1952,46 @@ async with runtime.subagents(parent="coordinator") as agents:
     print(result.output)
 ```
 
+### Concurrent Result Processing
+
+`> task_group:` registers all of its awaits before waiting. Each optional
+`> process:` belongs to the immediately preceding await and runs when that
+child is ready and the execution engine has capacity:
+
+```kedi
+> task_group:
+    > await [review]: review_job
+    > process:
+        >> The action for <`review.output.recommendation`> is [action: str].
+        > show: <action>
+    > await [summary]: summary_job
+    > process:
+        > show: <`summary.task_summary`>
+```
+
+The second process may start before the first child finishes. Waiters use
+completion notifications rather than occupying engine workers. Processing
+concurrency is bounded by the existing engine; a sequential engine admits one
+ready body at a time. Nested groups also work with one engine worker.
+
+Each arm has a private lexical scope. Its result binder, local values, types,
+and procedures do not escape or become visible in sibling arms. Processing
+inherits the parent's active agent configuration and budget lineage, not the
+child's profile. Explicit mutation of shared Python objects or outer bindings
+is not transactional; synchronize shared mutations when necessary.
+
+The group joins all children, process bodies, scheduled model work, and owned
+descendants before the following statement executes. A failure cancels queued
+work and owned children and drains running work before propagating the original
+error. Synchronous Python already running cannot be forcibly interrupted or
+rolled back. Descendants started inside a process must be awaited there.
+
+Direct `=` returns in a process, including its nested control-flow blocks,
+are parse errors. Procedures declared or called inside it retain their own
+normal return semantics. A group never chooses the enclosing return value.
+Use `> show:` for display. Bare awaits without a process are valid; an orphan
+or duplicate process clause is not.
+
 Subagent orchestration has two profile-level modes. Omitting `> workflow:` is
 equivalent to `> workflow: delegate` and preserves the delegation and lifecycle
 tools described below. `> workflow: dynamic` instead exposes one sequential
