@@ -1892,6 +1892,66 @@ profile output type to JSON Schema and returns the validated value in
 `final_result`. An explicit `final_schema` takes precedence. If neither is
 present, the child keeps the text-only `task_summary` behavior.
 
+#### Native task and await
+
+`> task` admits a direct child immediately, without a coordinator model call.
+Its body is exactly one ordinary `>>` template block; same-indent continuation
+rows belong to that block. A second `>>` is an error. Explicit `<inputs>` are
+rendered once when the task starts; parent variables and conversation history
+are not implicitly sent to the child.
+
+```kedi
+> profile: reviewer:
+    > adapter: pydantic
+    > system: Review only the supplied change.
+
+> profile: summarizer:
+    > adapter: pydantic
+
+> profile: coordinator:
+    > adapter: pydantic
+    > subagent: reviewer
+    > subagent: summarizer
+    > max_agents: 2
+
+> use: coordinator
+
+> task [review_job]: reviewer:
+    >> The main issue in <change> is [issue: str].
+    The recommended fix is [recommendation: str].
+
+> task [summary_job]: summarizer:
+    >> Summarize <change>.
+
+> await [review]: review_job
+> await [summary]: summary_job
+= <`review.output.recommendation`>
+```
+
+Both children may run before the first await. `> await [result]: job` blocks at
+that statement and binds a `SubagentResult`. `> await: job` also blocks and
+propagates errors but creates no binding. Repeated awaits return the same
+result without starting another child. `SubagentResult` exposes `output`,
+`task_summary`, `run_id`, and `subagent` as attributes. Task captures define
+a validated result model with attribute-accessible fields; they do not bind
+names in the parent. Do not combine task captures with the child's `> output:`
+declaration. Without task
+captures, the child's `> output:` applies; without either schema, `output` is
+`None` and the response is in `task_summary`.
+
+Task handles belong to one invocation. Unawaited work is cancelled and the
+invocation fails closed; a child failure, timeout, or schema error raises at
+await, including binderless await. Pydantic AI, LangChain, Claude, Codex, and
+A2A adapters support background tasks; DSPy's synchronous bridge does not.
+Python callers can use the same coordinator without model-generated delegation:
+
+```python
+async with runtime.subagents(parent="coordinator") as agents:
+    job = await agents.start("reviewer", task=change)
+    result = await job.wait()
+    print(result.output)
+```
+
 Subagent orchestration has two profile-level modes. Omitting `> workflow:` is
 equivalent to `> workflow: delegate` and preserves the delegation and lifecycle
 tools described below. `> workflow: dynamic` instead exposes one sequential
