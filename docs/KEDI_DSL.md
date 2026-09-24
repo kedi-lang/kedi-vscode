@@ -396,7 +396,7 @@ update a binding that already exists in a containing scope. Python-only names
 never become Kedi bindings. `> else:` is optional. There is no
 `elif`; use a nested `> if:` when another condition is required.
 
-Directives selected inside a branch apply only within that branch. Existing
+Directives selected inside a branch apply only within that branch.
 The first evaluated `=` in a selected body ends the enclosing procedure or
 regular program. Other branches remain valid return sites; later statements
 on the selected path do not execute.
@@ -1215,8 +1215,8 @@ enable scoped skill discovery.
   `profile_override`, `model_override`, `effort`, `settings`, `codemode`,
   `native_approvals`, `native_approval_handler`, `subagents`,
   `background_subagents`, `artifacts`, `native_artifacts`,
-  `stateful_history`, `history_replay`, `native_compaction`, `stream_events`,
-  and `hooks`.
+  `stateful_history`, `history_replay`, `history_processing`, `native_compaction`,
+  `stream_events`, `request_budget`, `tool_attempt_budget`, and `hooks`.
 - `> model: name` — set the active model for subsequent procedure captures (plain
   name or `` `expression` ``). With the Pydantic adapter, `codex/<model>` selects
   a Codex-authenticated Responses model on Python 3.11+ through the optional
@@ -1916,6 +1916,8 @@ are not implicitly sent to the child.
 
 > use: coordinator
 
+[change] = Add an export endpoint with unit tests but no integration coverage.
+
 > task [review_job]: reviewer:
     >> The main issue in <change> is [issue: str].
     The recommended fix is [recommendation: str].
@@ -1952,7 +1954,7 @@ async with runtime.subagents(parent="coordinator") as agents:
     print(result.output)
 ```
 
-### Concurrent Result Processing
+#### Concurrent Result Processing
 
 `> task_group:` registers all of its awaits before waiting. Each optional
 `> process:` belongs to the immediately preceding await and runs when that
@@ -1991,6 +1993,8 @@ are parse errors. Procedures declared or called inside it retain their own
 normal return semantics. A group never chooses the enclosing return value.
 Use `> show:` for display. Bare awaits without a process are valid; an orphan
 or duplicate process clause is not.
+
+#### Dynamic Workflows
 
 Subagent orchestration has two profile-level modes. Omitting `> workflow:` is
 equivalent to `> workflow: delegate` and preserves the delegation and lifecycle
