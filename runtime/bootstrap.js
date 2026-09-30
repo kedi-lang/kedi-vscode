@@ -11,7 +11,7 @@ const lockfile = require("proper-lockfile");
 const exec = promisify(execFile);
 const UV_VERSION = "0.11.21";
 const PYTHON_VERSION = "3.12";
-const PACKAGES = ["kedi==0.4.0", "tree-sitter-kedi==0.4.1"];
+const PACKAGES = ["kedi==0.4.0", "tree-sitter-kedi==0.4.1", "kedi-debugger==0.1.0"];
 const OWNER = "kedi-editor-runtime-v1";
 const ASSETS = {
     "darwin-arm64": ["aarch64-apple-darwin.tar.gz", "1f921d491ba5ffeea774eb04d6681ecee379101341cbb1500394993b541bf3f4"],
@@ -125,16 +125,18 @@ async function ensureUv(paths, env, log) {
 const PROBE = [
     "import sys, importlib.metadata as m",
     "import kedi.lsp.server, kedi.lsp.python_virtual, tree_sitter_kedi",
+    "import kedi_debugger",
+    "from kedi.debugging import DebugEvent, observe_execution",
     "assert sys.version_info[:2] == (3, 12)",
     ...PACKAGES.map(spec => { const [name, version] = spec.split("=="); return `assert m.version(${JSON.stringify(name)}) == ${JSON.stringify(version)}`; }),
 ].join("; ");
 
-async function healthy(paths, env) {
+async function healthy(paths, env, execute) {
     if (!await exists(paths.receipt) || !await exists(paths.python)) return false;
     try {
         const receipt = JSON.parse(await fs.readFile(paths.receipt, "utf8"));
         if (JSON.stringify(receipt.packages) !== JSON.stringify(PACKAGES)) return false;
-        await run(paths.python, ["-I", "-c", PROBE], env, 30000);
+        await execute(paths.python, ["-I", "-c", PROBE], env, 30000);
         return true;
     } catch { return false; }
 }
@@ -143,8 +145,8 @@ async function ensureRuntime(options = {}, dependencies = {}) {
     const paths = runtimePaths(options.home);
     const env = installationEnv(paths.home);
     const log = dependencies.log || (message => process.stderr.write(`[kedi] ${message}\n`));
-    const check = dependencies.healthy || healthy;
     const execute = dependencies.run || run;
+    const check = dependencies.healthy || ((paths, env) => healthy(paths, env, execute));
     const getUv = dependencies.ensureUv || ensureUv;
     await fs.mkdir(paths.home, { recursive: true, mode: 0o700 });
     const release = await lockfile.lock(paths.root, {
@@ -160,12 +162,13 @@ async function ensureRuntime(options = {}, dependencies = {}) {
             }
         }
         if (await check(paths, env)) return { python: paths.python };
+        await fs.rm(paths.receipt, { force: true });
         await fs.mkdir(paths.root, { recursive: true, mode: 0o700 });
         await fs.writeFile(paths.owner, OWNER, { mode: 0o600 });
         const uv = await getUv(paths, env, log);
         log(`Preparing shared Python ${PYTHON_VERSION} environment`);
         await execute(uv, ["venv", "--no-config", "--no-project", "--allow-existing", "--managed-python", "--python", PYTHON_VERSION, paths.root], env);
-        log("Installing Kedi and its language-server dependencies");
+        log("Installing Kedi, its language-server dependencies, and debugger");
         await execute(uv, ["pip", "install", "--no-config", "--python", paths.python, ...(dependencies.installPackages || PACKAGES)], env);
         // A receipt is valid only after import and package-version verification succeeds.
         await execute(paths.python, ["-I", "-c", PROBE], env, 30000);

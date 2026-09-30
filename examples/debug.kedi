@@ -1,0 +1,8 @@
+@greet(name: str) -> str:
+    [message: str] = Hello <name>
+    > show: <message>
+    = <message>
+
+[name: str] = Ada
+[result: str] = <greet(<name>)>
+> show: <result>

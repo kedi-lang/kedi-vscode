@@ -2,14 +2,15 @@
   "name": "kedi-vscode",
   "displayName": "Kedi-Lang",
   "description": "LSP-powered language support for Kedi DSL: highlighting via semantic tokens (tree-sitter on the server), diagnostics, hover, go-to-definition, references, rename, outline, signature help, inlay hints, formatting, plus Python LSP feature forwarding inside fenced ```python``` blocks.",
-  "version": "3.1.0",
+  "version": "3.3.0",
   "publisher": "dyigitpolat",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Debuggers"
   ],
   "keywords": [
     "kedi",
@@ -27,7 +28,9 @@
   "activationEvents": [
     "onStartupFinished",
     "onLanguage:kedi",
-    "onLanguage:python"
+    "onLanguage:python",
+    "onDebugResolve:kedi",
+    "onDebugInitialConfigurations"
   ],
   "extensionDependencies": [
     "ms-python.python"
@@ -36,6 +39,42 @@
     "untrustedWorkspaces": { "supported": false }
   },
   "contributes": {
+    "breakpoints": [{ "language": "kedi" }],
+    "debuggers": [
+      {
+        "type": "kedi",
+        "label": "Kedi",
+        "languages": ["kedi"],
+        "configurationAttributes": {
+          "launch": {
+            "required": ["program"],
+            "not": { "anyOf": [
+              { "required": ["python"] }, { "required": ["pythonPath"] },
+              { "required": ["interpreter"] }, { "required": ["pythonExecutable"] }
+            ] },
+            "properties": {
+              "program": { "type": "string", "minLength": 1, "pattern": "^[^\\u0000]*$", "description": "Absolute path to a saved .kedi program.", "default": "${file}" },
+              "cwd": { "type": "string", "minLength": 1, "pattern": "^[^\\u0000]*$", "description": "Absolute working directory. Defaults to the workspace folder or program directory." },
+              "args": { "type": "array", "items": { "type": "string", "pattern": "^[^\\u0000]*$" }, "default": [], "description": "Program arguments, passed without shell parsing." },
+              "env": { "type": "object", "propertyNames": { "pattern": "^[^=\\u0000]+$" }, "additionalProperties": { "type": ["string", "null"], "pattern": "^[^\\u0000]*$" }, "default": {}, "description": "Debuggee environment overrides. Use null to remove an inherited variable. Prefer inherited credentials over committed secrets." },
+              "stopOnEntry": { "type": "boolean", "default": true, "description": "Stop before the first executable Kedi statement." },
+              "adapter": { "type": "string", "minLength": 1, "description": "Optional Kedi model adapter, not the DAP executable." },
+              "model": { "type": "string", "minLength": 1, "description": "Optional model override." }
+            }
+          }
+        },
+        "initialConfigurations": [
+          { "type": "kedi", "request": "launch", "name": "Kedi: Current File", "program": "${file}", "args": [], "env": {}, "stopOnEntry": true }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "Kedi: Launch",
+            "description": "Debug a saved Kedi program using the selected Kedi Python.",
+            "body": { "type": "kedi", "request": "launch", "name": "Kedi: Current File", "program": "^\"\\${file}\"", "args": [], "env": {}, "stopOnEntry": true }
+          }
+        ]
+      }
+    ],
     "languages": [
       {
         "id": "kedi",
@@ -97,7 +136,7 @@
         "kedi.embeddedPython.enable": {
           "type": "boolean",
           "default": true,
-          "description": "Forward Hover / Go-to-Definition / Find References to the Python language server (Pylance/Pyright) when the cursor is inside a fenced ```python``` block or a backtick `python_expr` region."
+          "description": "Forward completion, hover, definition and references to the Python language server (Pylance/Pyright) inside Kedi Python fences and inline expressions, mapping edits and auto-imports back to source."
         },
         "kedi.embeddedKediInPython.enable": {
           "type": "boolean",

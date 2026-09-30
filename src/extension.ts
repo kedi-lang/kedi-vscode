@@ -31,6 +31,7 @@ import {
     EmbeddedKediInPython,
 } from "./embeddedKediInPython";
 import { managedPython, selectPython } from "./runtime";
+import { registerDebugger } from "./debugger";
 
 let client: LanguageClient | undefined;
 let embedded: EmbeddedPython | undefined;
@@ -46,6 +47,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     disposed = false;
     outputChannel = vscode.window.createOutputChannel("Kedi Language Server");
     context.subscriptions.push(outputChannel);
+
+    registerDebugger(context, async resource => {
+        const { explicitPath, usePythonExtension, serverCommand } = pythonSettings(resource);
+        if (serverCommand && !explicitPath && !usePythonExtension) {
+            throw new Error("A custom Kedi language-server command does not identify a debug Python. Use Kedi: Select Python Interpreter or set kedi.lsp.pythonPath.");
+        }
+        return resolvePython(context, usePythonExtension, explicitPath, resource);
+    });
 
     // Build the embedded-Python module first — the LSP middleware
     // closes over its public surface (range fetch + virtual-doc URI).
@@ -144,9 +153,6 @@ async function startClient(
     emb: EmbeddedPython
 ): Promise<void> {
     const cfg = vscode.workspace.getConfiguration("kedi");
-    const usePythonExtension = cfg.get<boolean>("lsp.usePythonExtension", false);
-    const explicitPath = cfg.get<string>("lsp.pythonPath", "");
-    const serverCommand = cfg.get<string>("lsp.serverCommand", "");
     const trace = cfg.get<string>("lsp.trace.server", "off");
     const preloadWarningThreshold = cfg.get<number>(
         "codemode.preloadWarningThreshold",
@@ -155,6 +161,7 @@ async function startClient(
 
     let serverOptions: ServerOptions;
     try {
+        const { explicitPath, usePythonExtension, serverCommand } = pythonSettings();
         serverOptions = await resolveServerOptions(context, usePythonExtension, explicitPath, serverCommand);
     } catch (err) {
         void showStartupError(err);
@@ -231,6 +238,22 @@ async function isEmbeddedPythonPosition(
     }
 }
 
+function pythonSettings(resource?: vscode.Uri): { usePythonExtension: boolean; explicitPath: string; serverCommand: string } {
+    const cfg = vscode.workspace.getConfiguration("kedi", resource);
+    const usePythonExtension = cfg.get<unknown>("lsp.usePythonExtension", false);
+    if (typeof usePythonExtension !== "boolean") {
+        throw new Error("kedi.lsp.usePythonExtension must be a boolean.");
+    }
+    const readCommand = (key: string): string => {
+        const value = cfg.get<unknown>(key, "");
+        if (typeof value !== "string" || value.includes("\0")) {
+            throw new Error(`kedi.${key} must be a string without NUL characters.`);
+        }
+        return value.trim();
+    };
+    return { usePythonExtension, explicitPath: readCommand("lsp.pythonPath"), serverCommand: readCommand("lsp.serverCommand") };
+}
+
 async function resolveServerOptions(
     context: vscode.ExtensionContext,
     usePythonExtension: boolean,
@@ -245,8 +268,7 @@ async function resolveServerOptions(
     }
 
     const host = usePythonExtension || Boolean(explicitPath);
-    const py = host ? await resolveInterpreterPath(usePythonExtension, explicitPath) : await managedPython(context, outputChannel!);
-    if (!py) throw new Error("No host Python selected. Use Kedi: Select Python Interpreter. Host environments must have Kedi installed.");
+    const py = await resolvePython(context, usePythonExtension, explicitPath);
     outputChannel?.appendLine(`Using Python interpreter: ${py}`);
     const args = [...(host ? [] : ["-I"]), "-m", "kedi.lsp.server"];
     return {
@@ -255,9 +277,22 @@ async function resolveServerOptions(
     };
 }
 
+async function resolvePython(
+    context: vscode.ExtensionContext,
+    usePythonExtension: boolean,
+    explicitPath: string,
+    resource?: vscode.Uri,
+): Promise<string> {
+    if (!usePythonExtension && !explicitPath) return managedPython(context, outputChannel!);
+    const python = await resolveInterpreterPath(usePythonExtension, explicitPath, resource);
+    if (!python) throw new Error("No host Python selected. Use Kedi: Select Python Interpreter. Host environments must have Kedi installed.");
+    return python;
+}
+
 async function resolveInterpreterPath(
     usePythonExtension: boolean,
-    explicitPath: string
+    explicitPath: string,
+    resource?: vscode.Uri,
 ): Promise<string | undefined> {
     if (explicitPath) {
         return explicitPath;
@@ -269,7 +304,7 @@ async function resolveInterpreterPath(
         const api = await getPythonApi();
         if (api?.environments?.getActiveEnvironmentPath) {
             const envPath = api.environments.getActiveEnvironmentPath(
-                vscode.window.activeTextEditor?.document?.uri
+                resource ?? vscode.window.activeTextEditor?.document?.uri
             );
             if (envPath?.path) {
                 const resolved = await api.environments.resolveEnvironment(envPath);

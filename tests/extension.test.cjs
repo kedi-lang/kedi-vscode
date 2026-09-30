@@ -7,11 +7,11 @@ const { transformSync } = require("esbuild");
 
 function harness(config = {}, options = {}) {
     const launches = [], errors = [], commands = new Map();
-    let callback, configurationCallback, managedCalls = 0;
+    let callback, configurationCallback, debugResolver, managedCalls = 0;
     const state = { host: "/host environment/bin/python" };
     const api = { environments: {
         onDidChangeActiveEnvironmentPath(fn) { callback = fn; return { dispose() {} }; },
-        getActiveEnvironmentPath() { return { path: "/host environment" }; },
+        getActiveEnvironmentPath(resource) { state.resource = resource; return { path: "/host environment" }; },
         async resolveEnvironment() { return { executable: { uri: { fsPath: state.host } } }; },
     } };
     const vscode = {
@@ -20,7 +20,7 @@ function harness(config = {}, options = {}) {
             async showErrorMessage(message) { errors.push(message); },
         },
         workspace: {
-            getConfiguration() { return { get: (key, fallback) => config[key] ?? fallback }; },
+            getConfiguration() { return { get: (key, fallback) => config[key] === undefined ? fallback : config[key] }; },
             createFileSystemWatcher() { return { dispose() {} }; },
             onDidChangeConfiguration(fn) { configurationCallback = fn; return { dispose() {} }; },
         },
@@ -29,6 +29,7 @@ function harness(config = {}, options = {}) {
     };
     const embedded = { dispose() {}, setClientGetter() {} };
     const modules = {
+        "./debugger": { registerDebugger(_context, resolvePython) { debugResolver = resolvePython; } },
         vscode,
         "vscode-languageclient/node": {
             TransportKind: { stdio: 0 },
@@ -60,6 +61,7 @@ function harness(config = {}, options = {}) {
         activate: () => module.exports.activate({ subscriptions: [] }),
         changePython: () => callback(),
         changeConfig: () => configurationCallback({ affectsConfiguration: () => true }),
+        debugPython: resource => debugResolver(resource),
     };
 }
 
@@ -116,5 +118,67 @@ test("configuration bursts coalesce into one restart", async () => {
     h.changeConfig(); h.changeConfig(); h.changeConfig();
     await new Promise(resolve => setTimeout(resolve, 400));
     assert.equal(h.launches.length, 2);
+    await h.extension.deactivate();
+});
+
+test("debugging reuses managed Python and follows explicit interpreter changes", async () => {
+    const config = {};
+    const h = harness(config);
+    await h.activate();
+    assert.equal(await h.debugPython({ fsPath: "/project/main.kedi" }), "/shared/editor-venv/bin/python");
+    const managedCalls = h.managedCalls();
+    config["lsp.pythonPath"] = "/host/python";
+    assert.equal(await h.debugPython({ fsPath: "/project/main.kedi" }), "/host/python");
+    config["lsp.pythonPath"] = "/other/python";
+    assert.equal(await h.debugPython({ fsPath: "/project/main.kedi" }), "/other/python");
+    assert.equal(h.managedCalls(), managedCalls);
+    await h.extension.deactivate();
+});
+
+test("debugging does not guess Python from an opaque LSP command", async () => {
+    const h = harness({ "lsp.serverCommand": "custom-kedi-lsp" });
+    await h.activate();
+    await assert.rejects(h.debugPython({}), /does not identify a debug Python/);
+    assert.equal(h.managedCalls(), 0);
+    await h.extension.deactivate();
+});
+
+test("debugging follows the Python extension for the launched file, not the active editor", async () => {
+    const h = harness({ "lsp.usePythonExtension": true });
+    await h.activate();
+    const resource = { fsPath: "/second project/main.kedi" };
+    assert.equal(await h.debugPython(resource), h.state.host);
+    assert.equal(h.state.resource, resource);
+    h.state.host = undefined;
+    await assert.rejects(h.debugPython(resource), /No host Python selected/);
+    assert.equal(h.managedCalls(), 0);
+    await h.extension.deactivate();
+});
+
+test("invalid Python settings fail both services without fallback or installation", async () => {
+    for (const [key, value] of [
+        ["lsp.pythonPath", false], ["lsp.pythonPath", null], ["lsp.pythonPath", 42],
+        ["lsp.pythonPath", "/bad\0python"], ["lsp.usePythonExtension", "false"],
+        ["lsp.usePythonExtension", null], ["lsp.serverCommand", []], ["lsp.serverCommand", null],
+    ]) {
+        const h = harness({ [key]: value });
+        await h.activate();
+        assert.equal(h.launches.length, 0, key);
+        assert.ok(h.errors[0].includes(`kedi.${key} must be`), key);
+        await assert.rejects(h.debugPython({}), error => error.message.includes(`kedi.${key} must be`));
+        assert.equal(h.managedCalls(), 0, key);
+        await h.extension.deactivate();
+    }
+});
+
+test("LSP and debugger normalize interpreter settings identically", async () => {
+    const config = { "lsp.pythonPath": "  /host environment/bin/python  " };
+    const h = harness(config);
+    await h.activate();
+    assert.equal(h.launches[0].command, "/host environment/bin/python");
+    assert.equal(await h.debugPython({}), h.launches[0].command);
+    config["lsp.pythonPath"] = "  ";
+    config["lsp.serverCommand"] = "  ";
+    assert.equal(await h.debugPython({}), "/shared/editor-venv/bin/python");
     await h.extension.deactivate();
 });

@@ -887,8 +887,32 @@ class Review(BaseModel):
     ]
 ```
 
-In Kedi, define the annotation in a Python prelude and reference it through an
-existing backtick type expression. No new native call syntax is introduced:
+In Kedi, import `Constraints` in the Python prelude. Its call goes inside a
+backtick expression in the metadata position of native `Annotated`:
+
+````kedi
+```
+from kedi import Constraints
+```
+
+~Review(
+  score: Annotated[
+    float,
+    "Evaluation score",
+    `Constraints(ge=0, le=2)`
+  ]
+)
+[review: Review] = `Review(score=1.5)`
+> show: `review.score`
+````
+
+`Constraints` is not implicitly imported. Bare `Constraints(...)` calls are not
+native type syntax. The backtick expression in an `Annotated` metadata position
+produces a metadata value, not a type; this also supports imported Jev criteria.
+Nested annotations retain the same behavior. In an actual type position, a
+backtick expression must still produce a type.
+
+Alternatively, define the entire annotation in Python and reference that alias:
 
 ````kedi
 ```
@@ -1799,7 +1823,12 @@ enable scoped skill discovery.
   endpoints; remote endpoints require HTTPS and cannot contain credentials,
   query strings, or fragments. Generic peers provide raw text. Typed template
   output requires the peer to advertise Kedi's versioned structured-output
-  extension. Local observation timeouts do not cancel remote work.
+  extension. Local observation timeouts do not cancel remote work. Serving an
+  exported profile with `kedi a2a serve --state-dir PATH` opts into single-process
+  persistent task results and committed sessions; without it, state is in memory.
+  Restart marks admitted but unfinished tasks failed with `server_interrupted`
+  metadata and never replays their model or tool effects automatically. Native
+  history checkpoints are supported for Pydantic AI and LangChain profiles.
 - Multiline `> system:` bodies are newline-joined like `>>` blocks, but they
   are read-only: literal text, `<name>` substitutions, and inline Python
   substitutions such as ``<`args.name`>`` are allowed; LLM outputs and procedure
@@ -1816,10 +1845,18 @@ enable scoped skill discovery.
 - Profiles merge when applied: later members override earlier ones of the same kind.
 - Adapter selection follows normal lexical scoping. A direct source directive in
   the current scope overrides an active profile, which overrides CLI defaults.
-  Nested scopes may switch adapters, but a single lexical scope cannot mix
-  `> agent:` and `> adapter:` because those select different adapter classes.
+  Sequential `> agent:` and `> adapter:` directives replace the active backend
+  for following calls; CLI/environment defaults do not lock that selection.
+  Nested scopes restore the outer selection on exit, and procedures retain their
+  definition-site selection. A declarative profile may contain only one selection
+  kind, not both.
   Use `> agent:` only for `agent-harness` adapters and `> adapter:` only for
   `agent-framework` adapters.
+- Switching between frameworks preserves an explicit `> model:` or, when absent,
+  the initial framework's string model ID. The destination must support that ID;
+  framework-specific Python model objects are not converted. An implicit
+  framework model is not transferred to a harness. Explicit model directives
+  remain in scope, so set a harness-compatible model when changing backend kinds.
 - Editor diagnostics use adapter capability metadata. An explicit
   `> requires:` mismatch is an error. If the selected adapter
   does not currently support structured template outputs, the LSP reports an
@@ -2403,6 +2440,14 @@ derive their identity from a suffix. Once enough content has been read, the
 agent completes the original task.
 Large values returned from `run_main()`, `@kedi.query`, or `@kedi.bind` remain
 their original native values.
+
+The separate Python `ArtifactHistory` diagnostic log retains the latest 4,096
+events by default (`max_events=None` explicitly disables retention). Its event
+sequences remain lifetime-monotonic; `retained_events` and `dropped_events`
+report retention. Checkpoints preserve the cursor and limit and accept legacy
+event-list checkpoints. Eviction does not alter provider messages, cache epochs,
+artifact payloads, or reference lifetimes. Compaction derives live-reference
+protection from the artifact manager rather than this recent-event log.
 
 #### Agent tools
 

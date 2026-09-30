@@ -30,6 +30,7 @@
 import * as vscode from "vscode";
 import { createHash } from "crypto";
 import { LanguageClient } from "vscode-languageclient/node";
+import { CompletionEdit, completionEdits, mappedCompletions, rawMappings } from "./pythonCompletion";
 
 const PYTHON_PROVIDER_RETRY_DELAYS_MS = [0, 25, 75, 150];
 const EMBEDDED_PYTHON_DIR = "embedded-python";
@@ -138,6 +139,36 @@ export function registerEmbeddedPython(
     // ------------------------------------------------------------
     // Forwarding providers
     // ------------------------------------------------------------
+
+    const forwardCompletion = async (
+        doc: vscode.TextDocument, pos: vscode.Position,
+        token: vscode.CancellationToken, context: vscode.CompletionContext,
+    ): Promise<vscode.CompletionList | undefined> => {
+        if (!isEmbedEnabled() || token.isCancellationRequested) return undefined;
+        const version = doc.version;
+        const text = doc.getText();
+        const focused = await ensureFocusedVirtualDocument(doc, pos);
+        if (!focused || doc.version !== version || token.isCancellationRequested) return undefined;
+        const position = sourcePositionToVirtual(focused.cached, pos);
+        const client = clientGetter();
+        if (!position || !client) return undefined;
+        // Resolve every offered candidate, including its auto-import edits. Typing
+        // another character refreshes the bounded list instead of resolving thousands.
+        const limit = 128;
+        const list = await vscode.commands.executeCommand<vscode.CompletionList>(
+            "vscode.executeCompletionItemProvider", focused.virtualUri, position,
+            context.triggerCharacter, limit,
+        );
+        if (!list || token.isCancellationRequested || doc.version !== version) return undefined;
+        const items = list.items.slice(0, limit);
+        const edits = await client.sendRequest<CompletionEdit[]>("kedi/pythonCompletions", {
+            textDocument: { uri: doc.uri.toString(), version }, text,
+            virtual: { text: focused.cached.virtualText, mappings: rawMappings(focused.cached.mappings) },
+            items: completionEdits(items),
+        }, token);
+        if (token.isCancellationRequested || doc.version !== version) return undefined;
+        return new vscode.CompletionList(mappedCompletions(items, edits), list.isIncomplete || list.items.length > limit);
+    };
 
     const forwardHover = async (
         doc: vscode.TextDocument,
@@ -254,6 +285,9 @@ export function registerEmbeddedPython(
     };
 
     context.subscriptions.push(
+        vscode.languages.registerCompletionItemProvider("kedi", {
+            provideCompletionItems: forwardCompletion,
+        }, ".", "\"", "'"),
         vscode.languages.registerHoverProvider("kedi", {
             provideHover: forwardHover,
         }),

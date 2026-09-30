@@ -5,7 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
-const { ensureRuntime, runtimePaths, installationEnv, verifyDownload, PACKAGES } = require("./bootstrap.js");
+const { ensureRuntime, runtimePaths, installationEnv, verifyDownload, PACKAGES, PROBE } = require("./bootstrap.js");
 const exec = promisify(execFile);
 
 async function home(t) {
@@ -59,12 +59,90 @@ test("first setup pins packages, imports before receipt, then reuses offline", a
     const deps = fakeRuntime(calls);
     const first = await ensureRuntime({ home: dir }, deps);
     assert.deepEqual(calls[1].args.slice(-PACKAGES.length), PACKAGES);
+    assert.ok(PACKAGES.includes("kedi-debugger==0.1.0"));
+    assert.ok(PROBE.includes("import kedi_debugger"));
+    assert.ok(PROBE.includes("from kedi.debugging import DebugEvent, observe_execution"));
     assert.ok(calls[0].args.includes("--managed-python"));
     assert.equal(calls[2].command, first.python);
     assert.deepEqual(await ensureRuntime({ home: dir }, {
         ...deps, ensureUv: async () => assert.fail("warm startup must not download uv"),
     }), first);
     assert.equal(calls.length, 3);
+});
+
+async function ownedRuntime(t, packages = PACKAGES) {
+    const dir = await home(t);
+    const paths = runtimePaths(dir);
+    await fs.mkdir(path.dirname(paths.python), { recursive: true });
+    await fs.writeFile(paths.python, "");
+    await fs.writeFile(paths.owner, "kedi-editor-runtime-v1");
+    await fs.writeFile(paths.receipt, JSON.stringify({ packages, python: "3.12" }));
+    return { dir, paths };
+}
+
+test("an existing LSP-only environment gains the debugger once at the same path", async t => {
+    const { dir, paths } = await ownedRuntime(t, PACKAGES.filter(spec => !spec.startsWith("kedi-debugger==")));
+    const calls = [];
+    const deps = fakeRuntime(calls);
+    delete deps.healthy; // Exercise real receipt comparison and import probing.
+    const result = await ensureRuntime({ home: dir }, deps);
+    assert.equal(result.python, paths.python);
+    assert.deepEqual(calls[1].args.slice(-PACKAGES.length), PACKAGES);
+    assert.equal(calls[2].args[2], PROBE);
+    assert.deepEqual(JSON.parse(await fs.readFile(paths.receipt, "utf8")).packages, PACKAGES);
+    await ensureRuntime({ home: dir }, {
+        ...deps, ensureUv: async () => assert.fail("Warm setup must not install again"),
+    });
+    assert.equal(calls.length, 4);
+    assert.equal(calls[3].command, paths.python);
+    assert.equal(calls[3].args[2], PROBE);
+});
+
+test("a removed debugger is repaired even when the package receipt is current", async t => {
+    const { dir, paths } = await ownedRuntime(t);
+    const calls = [];
+    const deps = fakeRuntime(calls);
+    delete deps.healthy;
+    const execute = deps.run;
+    let failedProbe = false;
+    deps.run = async (command, args, env) => {
+        await execute(command, args, env);
+        if (command === paths.python && !failedProbe) {
+            failedProbe = true;
+            throw new Error("No module named kedi_debugger");
+        }
+    };
+    await ensureRuntime({ home: dir }, deps);
+    assert.equal(calls.length, 4);
+    assert.ok(calls[2].args.includes("kedi-debugger==0.1.0"));
+    assert.equal(calls[3].args[2], PROBE);
+    assert.deepEqual(JSON.parse(await fs.readFile(paths.receipt, "utf8")).packages, PACKAGES);
+});
+
+test("failed debugger upgrade removes stale readiness and can be retried", async t => {
+    const { dir, paths } = await ownedRuntime(t, PACKAGES.filter(spec => !spec.startsWith("kedi-debugger==")));
+    const deps = fakeRuntime([], true);
+    delete deps.healthy;
+    await assert.rejects(ensureRuntime({ home: dir }, deps), /Installation failed/);
+    await assert.rejects(fs.access(paths.receipt), { code: "ENOENT" });
+    await assert.rejects(fs.access(`${paths.root}.lock`), { code: "ENOENT" });
+    const retry = fakeRuntime([]);
+    delete retry.healthy;
+    await ensureRuntime({ home: dir }, retry);
+    assert.deepEqual(JSON.parse(await fs.readFile(paths.receipt, "utf8")).packages, PACKAGES);
+});
+
+test("a Kedi runtime without debugger hooks is never marked ready", async t => {
+    const dir = await home(t);
+    const paths = runtimePaths(dir);
+    const deps = fakeRuntime([]);
+    delete deps.healthy;
+    deps.run = async command => {
+        if (command === paths.python) throw new Error("Missing kedi.debugging hooks");
+    };
+    await assert.rejects(ensureRuntime({ home: dir }, deps), /Missing kedi.debugging hooks/);
+    await assert.rejects(fs.access(paths.receipt), { code: "ENOENT" });
+    await assert.rejects(fs.access(`${paths.root}.lock`), { code: "ENOENT" });
 });
 
 test("failed setup is not ready, releases lock, and can be retried", async t => {
