@@ -71,7 +71,7 @@ A Kedi program consists of:
 
 ```kedi
 # This is an inline comment
-Use \# to escape a literal # character
+> show: Use \# to display a literal hash character.
 
 ###
 This is a block comment.
@@ -79,7 +79,7 @@ It can span multiple lines.
 ###
 ```
 
-- Inline: Everything after `#` is ignored; use `##` for literal `#`
+- Inline: Everything after an unescaped `#` is ignored; use `\#` for literal `#`
 - Block: Lines containing only `###` (trimmed) start/end blocks; must appear in matching pairs
 - Procedure docstrings: if the first statement inside a procedure body is a block comment, its body becomes the procedure's Python `__doc__` and is surfaced in editor hovers / virtual stubs
 
@@ -141,7 +141,11 @@ To export every public name in a module, use `> export: *`:
 > export: *
 ```
 
-Public names are names that do not start with `_`. If a module has no export directive, importing it does not expose any names.
+Public names are names that do not start with `_`, excluding the runtime-owned
+`args` binding. Imported procedures can still read `args`, but `> export: *`
+does not re-export it or replace the importer's CLI arguments. Explicitly
+importing an exported `args` binding is rejected because the name is reserved.
+If a module has no export directive, importing it does not expose any names.
 
 ### Packages
 
@@ -190,7 +194,8 @@ Inside procedures, multiple blocks are separated by blank lines or a new `>>`:
 ```
 
 Bare template lines (without `>>`) are a **parse error** at procedure and top level.
-They remain valid only inside `> optimize:` / `> auto:` bodies.
+The first prompt line inside `> optimize:` also requires `>>`. Only `> auto:`
+accepts bare rows as a code-generation specification, not an executable template.
 
 ### Raw Model Invokes (`<<`)
 
@@ -294,7 +299,7 @@ Use backticks only when the type itself must come from runtime Python state:
 
 Use `=` to initialize a variable in the current lexical scope:
 
-```kedi
+````kedi
 # Simple initialization
 [prev] = <current>
 
@@ -311,7 +316,7 @@ Use `=` to initialize a variable in the current lexical scope:
 [total: int] = ```
 return sum([1, 2, 3])
 ```
-```
+````
 
 `=` declares a value in the current lexical scope. If a containing scope
 already owns the same name, the new declaration shadows it; it does not update
@@ -333,12 +338,12 @@ Use `:=` to assign a new value to the nearest visible Kedi binding:
 target must already exist, and the value is validated against the target's
 original type contract. A fenced Python result is also supported:
 
-```kedi
+````kedi
 [total: int] = `0`
 [total] := ```
 return sum([1, 2, 3])
 ```
-```
+````
 
 #### Inline Python Type Annotations
 
@@ -550,11 +555,10 @@ Define reusable code blocks with `@name():`:
 
 ```kedi
 @greet(name):
-  Hello, <name>!
-  = Welcome
+  = Welcome, <name>!
 
 # Call the procedure
-Message: <greet(Alice)>
+> show: <greet(Alice)>
 ```
 
 ### Typed Parameters and Returns
@@ -564,7 +568,7 @@ Message: <greet(Alice)>
   = `x + y`
 
 @process(items: list[str]) -> str:
-  Total items: <`len(items)`>
+  > show: Total items: <`len(items)`>
   = Processed <`len(items)`> items
 
 # Inline Python type annotations work too
@@ -607,21 +611,21 @@ Arguments can be passed as:
   = <label>: <`str(n)`>
 
 # Native int, rendered string
-<show(`5`, Count)>
+> show: <show(`5`, Count)>
 
 # Both rendered as strings (ERROR if expecting int)
-<show(5, Count)>
+# > show: <show(5, Count)>
 
 # Native list
 @process(items: list[int]):
   = Sum: <`sum(items)`>
 
-<process(`[1, 2, 3]`)>
+> show: <process(`[1, 2, 3]`)>
 ```
 
 Use `\,` to escape commas within arguments:
 ```kedi
-<format(alpha\, beta\, gamma)>  # Single arg: "alpha, beta, gamma"
+> show: <format(alpha\, beta\, gamma)>  # Single arg: "alpha, beta, gamma"
 ```
 
 ## Python Integration
@@ -748,6 +752,24 @@ def helper(x):
 # Now numpy, plt, and helper are available everywhere
 [data] = `np.array([1, 2, 3])`
 ````
+
+### Source-Relative Files
+
+File-backed programs expose their absolute source path as `__file__` in Python
+preludes, inline expressions, and procedure bodies. Each imported module gets
+its own source path, not its caller's. For a sibling resource:
+
+````kedi
+```
+from pathlib import Path
+```
+
+[notes] = `Path(__file__).with_name("notes.md").read_text(encoding="utf-8")`
+````
+
+Kedi does not change the process working directory. A plain `Path("notes.md")`
+still follows Python's CWD-relative behavior. Unnamed programs and synthetic
+sources such as notebook cells do not receive an inferred `__file__` binding.
 
 ## Returns
 
@@ -1057,7 +1079,7 @@ Each template output becomes an opaque **promise** until its value is actually n
 
 ````kedi
 @get_cities(country: str) -> list[str]:
-  Cities in <country> are [cities: list[str]]
+  >> Cities in <country> are [cities: list[str]].
   = `cities`
 
 @test: get_cities:
@@ -1274,7 +1296,75 @@ enable scoped skill discovery.
 
   The same program works with `> adapter: langchain`; only the adapter directive changes.
 
-  Jev criteria are available through the optional `kedi.typesafe` module:
+  Local Laya decision models use `laya/<checkpoint>` with either adapter.
+  The provider is always `laya`, independently of its MLX or PyTorch backend.
+  The separate `kedi-laya` extension uses `kedi-decisions` for shared contracts;
+  it does not depend on TypeSafe or require a Jev API key. These development
+  packages live in the separate `kedi-lang/kedi-decisions` repository. From
+  the Kedi checkout, clone it into `decisions/` if not already present, then
+  install into the active Kedi environment:
+
+  ```bash
+  git clone https://github.com/kedi-lang/kedi-decisions.git decisions
+  uv pip install -e decisions -e 'decisions/packages/kedi-laya[mlx,pydantic]'
+  ```
+
+  Use `[torch,pydantic]` for upstream PyTorch, or include `langchain` for that
+  adapter. Automatic backend selection uses MLX on Apple Silicon when installed,
+  otherwise PyTorch. It never silently retries on another backend after a load
+  failure. Python callers can set `LayaModel(..., backend="mlx" | "torch")`;
+  the older `laya-mlx/<checkpoint>` ID remains an explicit MLX alias.
+
+  ```kedi
+  > adapter: pydantic
+  > model: laya/aac6fef/laya-multilingual-mlx
+  > import: laya
+
+  > settings:
+    decision_threshold: 0.85
+
+  >> The team for "Please refund my duplicate charge" is [team: Literal["billing", "technical"]].
+  = <team>
+  ```
+
+  A checkpoint may also be a local directory. Weights load once per model
+  instance; no hosted API key is required. Local Laya supports the same finite
+  choices, probabilities, rubric scores and boolean thresholds, not free-form
+  generation. Decision evidence identifies the actual local provider and
+  checkpoint. MLX-loaded models reject inputs exceeding their token budget
+  rather than silently truncating them. Laya and Jev confidence are not
+  interchangeable calibrated probabilities.
+
+  `> import: laya` exports `Probability`, `Rubric`, `BooleanCriteria`, and
+  `ChoiceCriteria`; it does not load weights or select a model. Python callers
+  use `kedi.laya`. Existing `kedi.typesafe` and `> import: typesafe` remain
+  supported. Laya accepts `decision_threshold` (strict `probability > threshold`,
+  default `0.85`) and `decision_tool_call_threshold` (default `0.6`); Jev keeps
+  its existing `typesafe_threshold` and `typesafe_tool_call_threshold` settings.
+
+  For decision models, Kedi sends the template as context and asks for decisions
+  based on each capture's question and criteria. It does not ask Jev or Laya to
+  reconstruct a grammatical sentence. Capture names, types, metadata and input
+  substitutions are unchanged. Generative models retain the normal field-replacement
+  prompt; raw `<<` prompts and control-flow claims keep their existing semantics.
+  Both adapters select this mode from the model bound to the current lexical
+  profile before prompt hooks, history, request accounting and transport.
+  Custom model objects can declare `kedi_prompt_mode = "decision"`; absent that
+  contract, unrecognized models retain completion mode. A dependency-aware dynamic
+  model selector is not executed during prompt assembly: custom selectors/adapters
+  must declare their decision mode explicitly when the target is not yet known.
+
+  Jev criteria are available through the bundled `typesafe` module:
+
+  ```kedi
+  > import: typesafe:
+    Probability
+    Rubric
+  ```
+
+  `> import: typesafe` imports all four primitives. The import does not select a model
+  or make a provider request. Python callers retain explicit imports from
+  `kedi.typesafe`. Native `Annotated` metadata calls still require backticks.
 
   ````kedi
   ```
@@ -4174,19 +4264,19 @@ Mark specific template spans in a procedure for optimization using the `> optimi
 @solve_math_problem(problem: str) -> int:
   # This template span will be optimized by the optimizer
   > optimize: parse_problem:
-    Given the math problem: <problem>
+    >> Given the math problem: <problem>
     Parse it and extract: [num1: int] and [num2: int] and [operator: str]
   
   # Another span to optimize
   > optimize: compute_result:
-    Calculate <num1> <operator> <num2>.
+    >> Calculate <num1> <operator> <num2>.
     The answer is: [answer: int]
   
   = `answer`
 ````
 
 Rules:
-- `> optimize: name:` must be followed by an indented block containing template lines (prompt text with `<variables>`, `<calls>`, and `[outputs]`). The whole indented span is newline-joined and executed as one LLM call, like a `>>` template block. The body may use an explicit leading `>>` or the legacy bare-line form; both have identical single-call behavior.
+- `> optimize: name:` must contain one indented template block starting with `>>`. A bare prompt without `>>` is a parse error. Continuation lines at the same indentation belong to that block and do not need another `>>`; the span executes as one logical model operation. Blank lines between prompt paragraphs are preserved, while blank lines before or after the block are allowed as layout whitespace.
 - Multiple optimize spans can be defined per procedure.
 - Optimization requires:
   1. A matching `@eval: procedure_name` suite with training data (`> data:`)
