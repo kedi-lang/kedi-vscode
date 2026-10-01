@@ -764,7 +764,11 @@ its own source path, not its caller's. For a sibling resource:
 from pathlib import Path
 ```
 
-[notes] = `Path(__file__).with_name("notes.md").read_text(encoding="utf-8")`
+[notes] = ```
+path = Path(__file__)
+path = path.with_name("notes.md")
+return path.read_text(encoding="utf-8")
+```
 ````
 
 Kedi does not change the process working directory. A plain `Path("notes.md")`
