@@ -3875,11 +3875,13 @@ as Kedi source rather than terminal commands. Terminal copy and paste is
 supported; pasted newlines, indentation, and blank lines remain part of the
 fragment and do not submit it. Press Enter twice after pasting to execute it.
 
-`kedi --idle --highlight` enables live syntax highlighting for Kedi and
-embedded Python input. Highlighting is optional, does not start a language
-server, and falls back to plain input for unusually large fragments so typing
-remains responsive. Highlighted, multiline, and ordinary input share the same
-REPL history.
+`kedi --idle` enables live syntax highlighting for Kedi and embedded Python
+input by default. It does not start a language server and falls back to plain
+input for unusually large fragments so typing remains responsive. Use
+`kedi --idle --no-color` to disable input highlighting and REPL error colors;
+a nonempty `NO_COLOR` environment variable also disables them. Redirected input
+or output uses plain line input. The existing `--highlight` flag remains
+supported. Highlighted, multiline, and ordinary input share the same REPL history.
 
 `:show <expression>` is an IDLE alias for native `> show:`. It displays once
 and continues without returning or introducing output captures. For example,
@@ -3914,7 +3916,7 @@ Readline history is stored in `~/.kedi_history`; set `KEDI_HISTORY` to
 choose another path. Adapter selection remains available through
 `--adapter` and `--adapter-model`. Interactive mode does not accept a source
 file, `-c/--command`, program arguments, or test/eval/optimization modes.
-`--record`, `--load`, and `--highlight` are valid only with `--idle`.
+`--record`, `--load`, `--highlight`, and `--no-color` are valid only with `--idle`.
 
 For a dynamic policy, decorate a Python handler and return one explicit
 decision. The decorator registers it as the default policy. Kedi passes an
