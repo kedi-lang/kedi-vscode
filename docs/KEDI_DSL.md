@@ -1318,7 +1318,7 @@ enable scoped skill discovery.
   ```kedi
   > adapter: pydantic
   > model: laya/aac6fef/laya-multilingual-mlx
-  > import: laya
+  > import: decisions
 
   > settings:
     decision_threshold: 0.85
@@ -1335,10 +1335,10 @@ enable scoped skill discovery.
   rather than silently truncating them. Laya and Jev confidence are not
   interchangeable calibrated probabilities.
 
-  `> import: laya` exports `Probability`, `Rubric`, `BooleanCriteria`, and
+  `> import: decisions` exports `Probability`, `Rubric`, `BooleanCriteria`, and
   `ChoiceCriteria`; it does not load weights or select a model. Python callers
-  use `kedi.laya`. Existing `kedi.typesafe` and `> import: typesafe` remain
-  supported. Laya accepts `decision_threshold` (strict `probability > threshold`,
+  use `kedi.decisions`. Both providers share these types; only the selected
+  model and its settings change. Laya accepts `decision_threshold` (strict `probability > threshold`,
   default `0.85`) and `decision_tool_call_threshold` (default `0.6`); Jev keeps
   its existing `typesafe_threshold` and `typesafe_tool_call_threshold` settings.
 
@@ -1354,22 +1354,22 @@ enable scoped skill discovery.
   model selector is not executed during prompt assembly: custom selectors/adapters
   must declare their decision mode explicitly when the target is not yet known.
 
-  Jev criteria are available through the bundled `typesafe` module:
+  Shared Jev and Laya criteria are available through the bundled `decisions` module:
 
   ```kedi
-  > import: typesafe:
+  > import: decisions:
     Probability
     Rubric
   ```
 
-  `> import: typesafe` imports all four primitives. The import does not select a model
+  `> import: decisions` imports all four primitives. The import does not select a model
   or make a provider request. Python callers retain explicit imports from
-  `kedi.typesafe`. Native `Annotated` metadata calls still require backticks.
+  `kedi.decisions`. Native `Annotated` metadata calls still require backticks.
 
   ````kedi
   ```
   from typing import Annotated
-  from kedi.typesafe import Rubric
+  from kedi.decisions import Rubric
 
   Quality = Annotated[
       float,
@@ -1383,10 +1383,14 @@ enable scoped skill discovery.
   = `quality`
   ````
 
-  `kedi.typesafe` exports `Rubric`, `ChoiceCriteria`, `BooleanCriteria`, and `Probability` from
-  `kedi-typesafe`. Importing this module without that optional package raises an
-  immediate error with installation instructions. Ordinary `import kedi` does not
-  require it. These helpers are imported explicitly; they are not global DSL types.
+  `kedi.decisions` exports `Rubric`, `ChoiceCriteria`, `BooleanCriteria`, and `Probability` from
+  `kedi-decisions`. Importing these criteria without that optional package raises
+  an immediate error with installation instructions. Neither a provider SDK nor
+  model weights are required for the types. Ordinary `import kedi` and the
+  decision-evidence API do not require the optional package. These helpers are
+  imported explicitly; they are not global DSL types. The former provider-specific
+  Kedi import modules are replaced by this shared surface. Provider model IDs and
+  the standalone `kedi_typesafe`/`kedi_laya` package APIs are unchanged.
   `Probability` is a finite float constrained to [0, 1]. A rubric with N levels
   validates scores in [0, N-1] without requiring additional range metadata.
 
