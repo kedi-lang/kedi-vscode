@@ -153,7 +153,7 @@ If a module has no export directive, importing it does not expose any names.
 
 The `python` field accepts only a fixed version (`python@3.11`) or an inclusive closed range (`python@3.11-3.14`). `python_dependencies` records PEP 508 dependency strings for package tooling; `kedi install` does not install them into the active Python environment.
 
-`kedi add <package-name>` uses the future `registry.kedi-lang.org/v1/package/<package-name>` registry contract. Until that service exists, set `KEDI_REGISTRY_MOCK_ROOT` to a directory containing package source directories and the same install path is used. Package installation writes a Kedi-owned `.kedi-install.json` receipt with the source kind, source path, manifest digest, and, for Git installs, the normalized URL and checked-out commit.
+`kedi add <package-name>` resolves `https://registry.kedi-lang.org/v1/package/<package-name>.json` and installs the active package at its exact registry-verified Git commit, not repository HEAD. Set `KEDI_REGISTRY_URL` to use another HTTPS registry or a loopback HTTP test server. `KEDI_REGISTRY_MOCK_ROOT` selects a local source-directory fixture instead of the HTTP registry; it is for development, not verified distribution. Package installation writes a Kedi-owned `.kedi-install.json` receipt with the source kind, manifest digest, repository and commit provenance. `kedi audit` checks installed receipts against the registry's commit-status index without importing package code; it reports yanked and revoked commits as actionable findings.
 
 To install an explicit GitHub source locally without involving the registry, pass a `git+https` URL:
 
@@ -161,12 +161,12 @@ To install an explicit GitHub source locally without involving the registry, pas
 kedi add git+https://github.com/user/project.git
 ```
 
-Kedi performs a shallow, no-checkout clone with Git's blob filter, reads `package.kedi` at the repository root, then sparse-checks out only the declared source tree before installing it and printing the checked-out commit. The Git source must be credential-free and hosted on `github.com`; package sources are limited to regular files/directories, a bounded source-tree size, and literal directory paths rather than Git sparse-checkout patterns. This is intentionally separate from package-registry resolution: when the public registry is available, its response will identify the registry-verified commit for each package rather than treating every Git release as a package release.
+Kedi performs a shallow, no-checkout clone with Git's blob filter, reads `package.kedi` at the repository root, then sparse-checks out only the declared source tree before installing it and printing the checked-out commit. The Git source must be credential-free and hosted on `github.com`; package sources are limited to regular files/directories, a bounded source-tree size, and literal directory paths rather than Git sparse-checkout patterns. This is intentionally separate from package-registry resolution: an explicit Git source is reported as unverified by `kedi audit`, even when its repository also hosts a registered package.
 
 `KEDI_HOME`, when set, must be an absolute path. Kedi rejects a relative override so a program cannot switch registries merely because it changes its working directory.
 
 > [!WARNING]
-> Kedi packages are executable code. Importing a third-party package can execute its embedded Python with the importing process's permissions. A future registry's verified commit proves package identity and integrity; it does not sandbox that package or audit its capabilities.
+> Kedi packages are executable code. Importing a third-party package can execute its embedded Python with the importing process's permissions. A registry-verified commit pins package identity and source provenance; it does not sandbox that package or audit its capabilities. `kedi audit` checks registry status and manifest receipts, not every installed source file.
 
 ### Template Blocks (`>>`)
 
