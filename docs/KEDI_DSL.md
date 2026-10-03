@@ -2089,6 +2089,59 @@ async with runtime.subagents(parent="coordinator") as agents:
     print(result.output)
 ```
 
+#### Live Task Input and Redirection
+
+`> send` queues additional input for a running task without cancelling its active
+model request or tool. `> interrupt` atomically requests interruption and supplies
+the updated task. Both keep the same task handle and output contract:
+
+```kedi
+> task [review_job]: reviewer:
+    >> The security concerns in <change> are [concerns: list[str]].
+
+> send: review_job:
+    >> Include the migration evidence from <migration_notes>.
+
+> interrupt: review_job:
+    >> The user changed the scope. Review only authentication and authorization.
+
+> await [review]: review_job
+> show: <`review.output.concerns`>
+```
+
+The input body contains exactly one `>>` template, optionally continued on later
+lines. Inputs are rendered once when sent. Output captures, nested directives,
+and a second template are parse errors. A rejected input raises at the directive.
+Task input cannot change the child's profile, tools, model, permissions, or schema.
+
+Python task handles expose `await job.send(message, interrupt=False)`. It returns
+an `InputReceipt` with `message_id`, `target_id`, `revision`, `status`, and `reason`.
+Status is `queued`, `interrupt_requested`, or `rejected`. Admission is not proof
+of delivery or understanding. Finished tasks reject input rather than restarting.
+
+Pydantic AI (with native enqueue support), LangChain, Codex, and Claude support
+this input contract. A2A, ACP, and DSPy do not currently support live task input.
+Interruption preserves native conversation state, completed tool results, and
+cumulative usage. It does not consume a new delegation slot or reset a deadline.
+The old attempt must stop before replacement work starts; non-quiescent tools
+produce a cleanup error instead of overlapping attempts.
+
+Input delivery is confirmed only after request-budget admission, not when a
+prompt is assembled. A request rejected by native usage limits or Kedi's run
+budget leaves its input undelivered. Requests started before interruption remain
+charged, and caller-supplied cumulative usage is retained across continuations.
+Delivery does not imply a successful response or model comprehension.
+
+Models use `send_subagent_input(task_id, message, interrupt=False)` for their own
+direct children, and children use `send_parent_message(message)` to report to
+their direct parent. Routing and sender identity are runtime-owned. A parent
+model receives updates at its next input boundary. Its `wait_subagent` tool may
+wake with `status="running"` and `input_available=true`; this is not a final child
+result. Native `> await` and Python `job.wait()` remain terminal-only waits.
+A Python owner can explicitly await `agents.receive_messages()` without an
+implicit parent model request. Input queues are bounded by count and UTF-8 bytes;
+overflow is rejected without evicting accepted messages.
+
 #### Concurrent Result Processing
 
 `> task_group:` registers all of its awaits before waiting. Each optional
