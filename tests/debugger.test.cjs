@@ -66,7 +66,7 @@ function harness(options = {}) {
         if (options.untrustDuringResolution) vscode.workspace.isTrusted = false;
         if (options.editDuringResolution) vscode.workspace.textDocuments.push({ uri: uri(program), isDirty: true });
         if (options.resolverError) throw new Error("Selected Python unavailable");
-        return state.python;
+        return { python: state.python, args: options.managed ? ["-I"] : [] };
     });
     return { ...state, state, vscode, errors, probes, resources, registrations, subscriptions };
 }
@@ -208,6 +208,14 @@ test("stdio factory uses the selected executable, not a shell or a separate debu
     assert.equal(h.probes[0].settings.timeout, 15000);
     h.state.python = "/changed/python";
     assert.equal((await h.factory.createDebugAdapterDescriptor({ configuration: config })).command, "/changed/python");
+});
+
+test("managed debugger and its import probe preserve Python isolation", async () => {
+    const h = harness({ managed: true });
+    const config = await h.provider.resolveDebugConfigurationWithSubstitutedVariables(undefined, configuration());
+    const descriptor = await h.factory.createDebugAdapterDescriptor({ configuration: config });
+    assert.deepEqual(plain(descriptor.args), ["-I", "-m", "kedi_debugger", "--stdio"]);
+    assert.deepEqual(h.probes[0].args.slice(0, 2), ["-I", "-c"]);
 });
 
 test("missing module has a local editable install hint without logs, install or fallback", async () => {

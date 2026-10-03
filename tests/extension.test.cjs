@@ -24,7 +24,7 @@ function harness(config = {}, options = {}) {
             createFileSystemWatcher() { return { dispose() {} }; },
             onDidChangeConfiguration(fn) { configurationCallback = fn; return { dispose() {} }; },
         },
-        extensions: { getExtension() { return { isActive: true, exports: api }; } },
+        extensions: { getExtension() { return options.noPythonExtension ? undefined : { isActive: true, exports: api }; } },
         commands: { registerCommand(id, fn) { commands.set(id, fn); return { dispose() {} }; } },
     };
     const embedded = { dispose() {}, setClientGetter() {} };
@@ -64,6 +64,17 @@ function harness(config = {}, options = {}) {
         debugPython: resource => debugResolver(resource),
     };
 }
+
+test("managed services do not require the Microsoft Python extension", async () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8'));
+    assert.ok(!manifest.extensionDependencies?.includes('ms-python.python'));
+    const h = harness({}, { noPythonExtension: true });
+    await h.activate();
+    assert.equal(h.launches[0].command, '/shared/editor-venv/bin/python');
+    assert.equal((await h.debugPython({})).python, '/shared/editor-venv/bin/python');
+    assert.deepEqual(h.errors, []);
+    await h.extension.deactivate();
+});
 
 test("default uses shared runtime, not the project's selected interpreter", async () => {
     const h = harness();
@@ -125,12 +136,14 @@ test("debugging reuses managed Python and follows explicit interpreter changes",
     const config = {};
     const h = harness(config);
     await h.activate();
-    assert.equal(await h.debugPython({ fsPath: "/project/main.kedi" }), "/shared/editor-venv/bin/python");
+    assert.equal((await h.debugPython({ fsPath: "/project/main.kedi" })).python, "/shared/editor-venv/bin/python");
+    assert.deepEqual(Array.from((await h.debugPython({})).args), ["-I"]);
     const managedCalls = h.managedCalls();
     config["lsp.pythonPath"] = "/host/python";
-    assert.equal(await h.debugPython({ fsPath: "/project/main.kedi" }), "/host/python");
+    assert.equal((await h.debugPython({ fsPath: "/project/main.kedi" })).python, "/host/python");
+    assert.deepEqual(Array.from((await h.debugPython({})).args), []);
     config["lsp.pythonPath"] = "/other/python";
-    assert.equal(await h.debugPython({ fsPath: "/project/main.kedi" }), "/other/python");
+    assert.equal((await h.debugPython({ fsPath: "/project/main.kedi" })).python, "/other/python");
     assert.equal(h.managedCalls(), managedCalls);
     await h.extension.deactivate();
 });
@@ -147,7 +160,7 @@ test("debugging follows the Python extension for the launched file, not the acti
     const h = harness({ "lsp.usePythonExtension": true });
     await h.activate();
     const resource = { fsPath: "/second project/main.kedi" };
-    assert.equal(await h.debugPython(resource), h.state.host);
+    assert.equal((await h.debugPython(resource)).python, h.state.host);
     assert.equal(h.state.resource, resource);
     h.state.host = undefined;
     await assert.rejects(h.debugPython(resource), /No host Python selected/);
@@ -176,9 +189,9 @@ test("LSP and debugger normalize interpreter settings identically", async () => 
     const h = harness(config);
     await h.activate();
     assert.equal(h.launches[0].command, "/host environment/bin/python");
-    assert.equal(await h.debugPython({}), h.launches[0].command);
+    assert.equal((await h.debugPython({})).python, h.launches[0].command);
     config["lsp.pythonPath"] = "  ";
     config["lsp.serverCommand"] = "  ";
-    assert.equal(await h.debugPython({}), "/shared/editor-venv/bin/python");
+    assert.equal((await h.debugPython({})).python, "/shared/editor-venv/bin/python");
     await h.extension.deactivate();
 });

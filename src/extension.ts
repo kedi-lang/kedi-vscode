@@ -53,7 +53,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (serverCommand && !explicitPath && !usePythonExtension) {
             throw new Error("A custom Kedi language-server command does not identify a debug Python. Use Kedi: Select Python Interpreter or set kedi.lsp.pythonPath.");
         }
-        return resolvePython(context, usePythonExtension, explicitPath, resource);
+        return {
+            python: await resolvePython(context, usePythonExtension, explicitPath, resource),
+            args: explicitPath || usePythonExtension ? [] : ["-I"],
+        };
     });
 
     // Build the embedded-Python module first — the LSP middleware

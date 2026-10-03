@@ -32,9 +32,6 @@
     "onDebugResolve:kedi",
     "onDebugInitialConfigurations"
   ],
-  "extensionDependencies": [
-    "ms-python.python"
-  ],
   "capabilities": {
     "untrustedWorkspaces": { "supported": false }
   },
@@ -89,6 +86,17 @@
         "icon": {
           "light": "./icon.png",
           "dark": "./icon.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "kedi",
+        "scopeName": "source.kedi",
+        "path": "./syntaxes/kedi.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.python": "python",
+          "meta.embedded.inline.python": "python"
         }
       }
     ],
@@ -178,7 +186,9 @@
     "@types/vscode": "1.85.0",
     "@vscode/vsce": "2.22.0",
     "esbuild": "0.21.5",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vscode-oniguruma": "2.0.1",
+    "vscode-textmate": "9.2.0"
   },
   "scripts": {
     "vscode:prepublish": "npm run bundle",

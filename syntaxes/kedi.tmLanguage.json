@@ -1,0 +1,83 @@
+{
+  "name": "Kedi",
+  "scopeName": "source.kedi",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#python" },
+    {
+      "match": "^\\s*(>)(?!>)[ \\t]*(agent|adapter|model|effort|approval|hooks|history|skills|codemode|requires|budget|show|tool|instructions|mcp|settings|artifacts|output|subagent|max_agents|workflow|profile|use|package|import|export|auto|optimize|case|data|test_data|metric|if|else|loop|task|await|send|interrupt|task_group|process|map)\\b",
+      "captures": { "1": { "name": "keyword.operator.kedi" }, "2": { "name": "keyword.control.kedi" } }
+    },
+    {
+      "match": "^\\s*(@)(test|eval)(?=\\s*:)",
+      "captures": { "1": { "name": "keyword.operator.kedi" }, "2": { "name": "keyword.control.kedi" } }
+    },
+    {
+      "match": "^\\s*(@)([A-Za-z_][A-Za-z_0-9]*)(?=\\s*\\()",
+      "captures": { "1": { "name": "keyword.operator.kedi" }, "2": { "name": "entity.name.function.kedi" } }
+    },
+    {
+      "match": "^\\s*(~)([A-Za-z_][A-Za-z_0-9]*)(?=\\s*\\()",
+      "captures": { "1": { "name": "keyword.operator.kedi" }, "2": { "name": "entity.name.type.kedi" } }
+    },
+    {
+      "begin": "(>>)", "end": "$", "name": "string.unquoted.template.kedi",
+      "beginCaptures": { "1": { "name": "keyword.control.kedi" } },
+      "patterns": [{ "include": "#segments" }, { "include": "#comments" }]
+    },
+    { "match": "^\\s*(=)", "captures": { "1": { "name": "keyword.control.return.kedi" } } },
+    { "match": "<<|:=|->", "name": "keyword.operator.kedi" },
+    { "include": "#segments" },
+    { "include": "#types" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "begin": "^\\s*###\\s*$", "end": "^\\s*###\\s*$", "name": "comment.block.kedi" },
+        { "match": "(?<!\\\\)#.*$", "name": "comment.line.number-sign.kedi" }
+      ]
+    },
+    "python": {
+      "patterns": [
+        {
+          "begin": "(```)(?:python)?\\s*$", "end": "^\\s*(```)\\s*$",
+          "contentName": "meta.embedded.block.python",
+          "beginCaptures": { "1": { "name": "punctuation.section.embedded.begin.kedi" } },
+          "endCaptures": { "1": { "name": "punctuation.section.embedded.end.kedi" } },
+          "patterns": [{ "include": "source.python" }]
+        },
+        {
+          "begin": "(?<!`)(`)(?!`)", "end": "(`)|$", "contentName": "meta.embedded.inline.python",
+          "beginCaptures": { "1": { "name": "punctuation.section.embedded.begin.kedi" } },
+          "endCaptures": { "1": { "name": "punctuation.section.embedded.end.kedi" } },
+          "patterns": [{ "include": "source.python" }]
+        }
+      ]
+    },
+    "segments": {
+      "patterns": [
+        { "include": "#python" },
+        {
+          "begin": "(\\[)([A-Za-z_][A-Za-z_0-9]*)(\\s*:)?", "end": "\\]|$",
+          "beginCaptures": { "1": { "name": "punctuation.definition.variable.kedi" }, "2": { "name": "variable.other.kedi" } },
+          "patterns": [{ "include": "#python" }, { "include": "#types" }]
+        },
+        {
+          "begin": "(?<!<)(<)(?!<)", "end": ">|$", "name": "meta.interpolation.kedi",
+          "patterns": [
+            { "include": "#python" },
+            { "match": "[A-Za-z_][A-Za-z_0-9]*(?=\\s*\\()", "name": "entity.name.function.kedi" },
+            { "match": "[A-Za-z_][A-Za-z_0-9]*", "name": "variable.other.kedi" }
+          ]
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        { "begin": "\"", "end": "\"|$", "name": "string.quoted.double.kedi", "patterns": [{ "match": "\\\\.", "name": "constant.character.escape.kedi" }] },
+        { "match": "\\b(str|int|float|bool|list|dict|tuple|set|Any|Optional|Union|Annotated|Literal)\\b", "name": "support.type.kedi" },
+        { "match": "\\b(enabled|disabled|True|False|None)\\b", "name": "constant.language.kedi" }
+      ]
+    }
+  }
+}

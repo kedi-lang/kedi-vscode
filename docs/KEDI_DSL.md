@@ -1166,19 +1166,26 @@ Dataset items can follow two conventions:
 
 Kedi routes LLM calls through agent adapters. Use `> adapter:`, `> agent:`,
 `> model:`, `> requires:`, `> effort:`, `> approval:`, `> hooks:`, `> skills:`,
-`> system:`, `> mcp:`, `> profile:`, and `> use:`
+`> instructions:`, `> mcp:`, `> profile:`, and `> use:`
 to choose adapter implementations, choose models, set reasoning effort, set
 agent instructions, load MCP tools, expose Kedi procedures as agent tools, and
 enable scoped skill discovery.
 
 ### Model and profile directives
 
+`> instructions:` is the canonical directive for scoped agent instructions.
+The previous name, `> system:`, is no longer accepted and produces a parse
+error. Change only the directive name to migrate;
+inline text, multiline bodies, substitutions, lexical capture, and override
+precedence are unchanged.
+This language rename does not change the Python `system=` configuration API.
+
 ```kedi
 > adapter: pydantic
 > model: openai:gpt-5.6-luna
 > effort: low
 > approval: allow
-> system: Answer concisely and avoid extra narration.
+> instructions: Answer concisely and avoid extra narration.
 
 > profile: fast:
     > adapter: pydantic
@@ -1187,7 +1194,7 @@ enable scoped skill discovery.
     > settings:
         temperature: 0.2
         max_tokens: 1024
-    > system:
+    > instructions:
         Prefer short direct answers.
         Adapt examples for <audience>.
 > profile: quality:
@@ -1195,7 +1202,7 @@ enable scoped skill discovery.
     > model: gpt-5.6-luna
     > requires: stream_events
     > effort: high
-    > system: Be precise and cite the relevant tool output.
+    > instructions: Be precise and cite the relevant tool output.
     > settings:
         parallel_tool_calls: true
         num_retries: 2
@@ -1565,7 +1572,7 @@ enable scoped skill discovery.
   Codex, and WebGPU support all four events; ACP supports only
   `user_prompt_submit`; DSPy does not support this surface. Unsupported events
   fail before model transport and are reported by the LSP.
-- `> system: text` — set active agent instructions for subsequent procedure
+- `> instructions: text` — set active agent instructions for subsequent procedure
   captures and prompt calls.
 - `> history: enabled|disabled` — control whether model calls in the current
   lexical scope share conversation history. History is disabled by default.
@@ -1787,7 +1794,7 @@ enable scoped skill discovery.
   settings, such as `cwd`, `env`, and `timeout` for ACP. `cwd` is passed as
   the agent process working directory where supported, including ACP, Codex,
   and Claude. Claude enables the Claude Code built-in tool and system prompt
-  presets by default; `> system:` is appended to the Claude Code preset so file
+  presets by default; `> instructions:` is appended to the Claude Code preset so file
   tools remain part of the agent behavior. Non-interactive Claude runs default
   to `permission_mode: acceptEdits`, allowing those built-in file tools to
   complete; set `permission_mode` explicitly to override it. Set `tools`
@@ -1927,13 +1934,13 @@ enable scoped skill discovery.
   Restart marks admitted but unfinished tasks failed with `server_interrupted`
   metadata and never replays their model or tool effects automatically. Native
   history checkpoints are supported for Pydantic AI and LangChain profiles.
-- Multiline `> system:` bodies are newline-joined like `>>` blocks, but they
+- Multiline `> instructions:` bodies are newline-joined like `>>` blocks, but they
   are read-only: literal text, `<name>` substitutions, and inline Python
   substitutions such as ``<`args.name`>`` are allowed; LLM outputs and procedure
   calls are not. Use `<``>` when the instruction text needs to mention a
   literal code fence marker.
 - `> profile: name:` — define a reusable profile with nested `> agent:`,
-  `> adapter:`, `> model:`, `> effort:`, `> approval:`, `> system:`,
+  `> adapter:`, `> model:`, `> effort:`, `> approval:`, `> instructions:`,
   `> settings:`, `> requires:`, `> budget:`, `> mcp:`, `> output:`, `> subagent:`,
   `> workflow:`, and/or `> use:`
   members. A profile that delegates may also set `> max_agents: N`.
@@ -2000,7 +2007,7 @@ profiles as direct children:
     ###
     > adapter: pydantic
     > model: openrouter:google/gemini-3-flash-preview
-    > system: Inspect the evidence before answering.
+    > instructions: Inspect the evidence before answering.
     > output: ResearchReport
     > use: web_search
 
@@ -2038,7 +2045,7 @@ are not implicitly sent to the child.
 ```kedi
 > profile: reviewer:
     > adapter: pydantic
-    > system: Review only the supplied change.
+    > instructions: Review only the supplied change.
 
 > profile: summarizer:
     > adapter: pydantic
@@ -2329,7 +2336,7 @@ String fields can be plain Kedi strings or inline Python expressions:
   and `env` must evaluate to a string dictionary when present.
 - `http` / `streamable-http` and `sse` servers require `url`; `headers` must
   evaluate to a string dictionary when present.
-- MCP directives follow the same scoping model as `> model:` and `> system:`:
+- MCP directives follow the same scoping model as `> model:` and `> instructions:`:
   top-level directives are captured by following procedures, profile members
   are applied when the profile is used, and procedure-body directives affect
   following prompt calls in that procedure.
@@ -4365,7 +4372,7 @@ The system will:
 
 Unknown `>` directives will raise a directive error. Valid directives include
 `auto`, `data`, `test_data`, `metric`, `optimize`, `model`, `effort`, `skills`,
-`system`, `mcp`, `profile`, `use`, `import`, and `export`.
+`instructions`, `mcp`, `profile`, `use`, `import`, and `export`.
 
 ## Complete Example with Explanations
 

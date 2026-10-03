@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 const DEBUG_TYPE = "kedi";
 const MODULE_PROBE = "import kedi_debugger; from kedi.debugging import DebugEvent, observe_execution";
 
-type PythonResolver = (resource: vscode.Uri) => Promise<string>;
+type PythonResolver = (resource: vscode.Uri) => Promise<{ python: string; args: string[] }>;
 
 function requireTrust(): void {
     if (!vscode.workspace.isTrusted) {
@@ -64,9 +64,9 @@ function validateConfiguration(config: vscode.DebugConfiguration): void {
     }
 }
 
-async function checkDebugger(python: string, cwd: string): Promise<void> {
+async function checkDebugger(python: string, args: string[], cwd: string): Promise<void> {
     await new Promise<void>((resolve, reject) => {
-        execFile(python, ["-c", MODULE_PROBE], {
+        execFile(python, [...args, "-c", MODULE_PROBE], {
             cwd, timeout: 15000, maxBuffer: 64 * 1024, windowsHide: true,
         }, error => {
             if (!error) return resolve();
@@ -149,15 +149,15 @@ class KediDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
     async createDebugAdapterDescriptor(session: vscode.DebugSession): Promise<vscode.DebugAdapterExecutable> {
         requireTrust();
         validateConfiguration(session.configuration);
-        const python = await this.resolvePython(vscode.Uri.file(session.configuration.program));
+        const { python, args } = await this.resolvePython(vscode.Uri.file(session.configuration.program));
         requireTrust();
-        await checkDebugger(python, session.configuration.cwd);
+        await checkDebugger(python, args, session.configuration.cwd);
         requireTrust();
         const program = vscode.Uri.file(session.configuration.program);
         if (vscode.workspace.textDocuments.some(doc => doc.uri.toString() === program.toString() && doc.isDirty)) {
             throw new Error("Save the Kedi program before debugging; it changed during debugger preparation.");
         }
-        return new vscode.DebugAdapterExecutable(python, ["-m", "kedi_debugger", "--stdio"], {
+        return new vscode.DebugAdapterExecutable(python, [...args, "-m", "kedi_debugger", "--stdio"], {
             cwd: session.configuration.cwd,
         });
     }

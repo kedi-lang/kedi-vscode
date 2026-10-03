@@ -3,6 +3,15 @@
 Kedi is a lightweight DSL for orchestrating LLM workflows. This extension ships syntax awareness and authoring helpers for the language.
 
 ## Syntax Highlighting
+Basic coloring is available immediately through a bundled TextMate grammar,
+including `> output:` in profiles and the task/budget directives. Tree-sitter
+semantic tokens from the language server refine names, types, and Python regions.
+If the server cannot start, basic coloring remains available; diagnostics,
+completion, and hover still require a working Kedi Python environment.
+
+`> output:` belongs inside a `> profile: name:` body; it is not a top-level
+directive. Syntax coloring is not a substitute for parser diagnostics.
+
 - Procedures with typed parameters, optional return annotations, and colon terminators.
 - Custom type declarations with nested field highlighting.
 - Assignments, return lines, template text, and indentation-delimited blocks.
@@ -12,6 +21,28 @@ Kedi is a lightweight DSL for orchestrating LLM workflows. This extension ships 
 - String literals, unquoted template segments, and inline/block comments.
 - Test definitions `@test: procedure` where `procedure` is highlighted like a function name, with case blocks `> case: name` where `>` is highlighted like `@`, `case` as a keyword, and `name` as a variable.
 - Evaluation definitions `@eval: procedure` where `procedure` is highlighted like a function name, with metric blocks `> metric: name` where `>` is highlighted like `@`, `metric` as a keyword, and `name` as a variable.
+
+### Editor Integration Test
+
+`npm test` includes TextMate tokenization tests using VS Code's grammar engine.
+To exercise the actual extension host, point `kedi.lsp.pythonPath` in a trusted
+isolated test workspace at a Python environment with the current Kedi sources installed,
+then run from this extension directory:
+
+```sh
+npm run bundle
+code --new-window --user-data-dir /tmp/kedi-editor-test \
+  --extensions-dir /tmp/kedi-editor-test-extensions \
+  --extensionDevelopmentPath="$PWD" \
+  --extensionTestsPath="$PWD/tests/editor/index.cjs" /path/to/test-workspace
+```
+
+The test checks semantic tokens, profile output, captures, hover, outline,
+completion, language-server restart, debugger stepping, variables, clean exit,
+and relaunch with changed source and `.env` values without making model calls.
+Set `debug.saveBeforeStart` to `none` in the test profile to avoid save prompts
+for the untitled language-server fixtures. To verify a
+packaged VSIX, use its installed directory as `extensionDevelopmentPath`.
 
 ## Authoring Semantics
 - Distinguishes plain template lines from control lines so prompts, returns, and assignments render correctly.
@@ -37,6 +68,16 @@ Python 3.12 and installs `kedi==0.4.0`, `tree-sitter-kedi==0.4.1`,
 `kedi-debugger==0.1.0`, and their
 dependencies, including the language server. An absolute `KEDI_HOME` overrides
 `~/.kedi`. Python downloads and package caches stay inside that directory.
+
+The managed language server and debugger do not require Microsoft's Python
+extension. Install Python/Pylance for embedded Python language features or
+to opt into the Python extension's interpreter selection.
+
+Release prerequisite: these exact package versions must be available on PyPI.
+Until publication, use an explicitly selected local environment, or validate
+local wheels with `node runtime/smoke.cjs /absolute/test-home` followed by the
+Kedi, tree-sitter-kedi, and kedi-debugger wheel paths. This test does not publish
+packages or change the user's default editor environment.
 
 Both editors use the same installation lock. A healthy environment is reused
 without downloading packages; failed installations are retried on the next
