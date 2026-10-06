@@ -1449,6 +1449,10 @@ This language rename does not change the Python `system=` configuration API.
 - `> effort: level` — set active reasoning effort. Accepted values are
   `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; plain values or
   `` `expression` `` are allowed. Pydantic AI maps `max` to `xhigh`.
+  An explicit scoped effort overrides inherited provider-specific effort
+  settings, including OpenAI defaults on the model, agent, or run. Leaving
+  the scope restores the enclosing configuration; native defaults remain
+  unchanged when no Kedi effort is selected.
   DSPy receives the value directly as `reasoning_effort`.
 - `> approval: allow` / `> approval: deny` — configure tool-call approval for
   subsequent agent calls in the current scope. `allow` permits registered
@@ -1934,6 +1938,16 @@ This language rename does not change the Python `system=` configuration API.
   Restart marks admitted but unfinished tasks failed with `server_interrupted`
   metadata and never replays their model or tool effects automatically. Native
   history checkpoints are supported for Pydantic AI and LangChain profiles.
+  Artifact-producing tools and artifact readers are bound to the remote session's
+  own store, not the shared compiled program. Durable sessions checkpoint that
+  store and rebind their tools after restoration; separate sessions cannot use
+  each other's artifact references.
+  A failed checkpoint write rolls back both the database transaction and the
+  SDK's in-memory task view. A transient storage failure can therefore become a
+  failed task without waiting for a client timeout. If storage remains unwritable,
+  no durable failure update can be promised: the operation errors, and restart
+  reconciliation marks the unfinished task interrupted once storage is writable.
+  Neither path automatically repeats model or tool effects.
 - Multiline `> instructions:` bodies are newline-joined like `>>` blocks, but they
   are read-only: literal text, `<name>` substitutions, and inline Python
   substitutions such as ``<`args.name`>`` are allowed; LLM outputs and procedure
@@ -2095,6 +2109,11 @@ async with runtime.subagents(parent="coordinator") as agents:
     result = await job.wait()
     print(result.output)
 ```
+
+A child failure or cancellation observed and handled at `wait()` is not raised
+again on scope exit. The admitted call still consumes invocation budget.
+Cancelling a waiter while its child is still running does not observe or cancel
+that child; the unawaited-work rule remains in effect.
 
 #### Live Task Input and Redirection
 
@@ -3443,6 +3462,12 @@ sequential-execution flag, Kedi argument validation, and sync or async callable
 behavior. When the converted tool or toolset is supplied to a
 `PydanticAdapter`, it also preserves Kedi run-level semantics such as dynamic
 risk resolution, approval edits, and `required_before_output` validation.
+
+Both `PydanticAdapter` and `LangChainAdapter` honor `ToolSpec(sequential=True)`
+for native tool calls. Its body runs exclusively relative to other tool calls
+in that invocation. Ordinary independent tools can still overlap; independent
+agent runs do not share a global tool lock. This is not a transaction or a
+guarantee that cancelling an await interrupts a running Python thread.
 
 `PydanticAdapter(..., approval_resolution="kedi")` is the default and resolves
 approval-required calls with the active Kedi policy. Set
