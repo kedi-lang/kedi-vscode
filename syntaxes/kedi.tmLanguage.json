@@ -5,7 +5,7 @@
     { "include": "#comments" },
     { "include": "#python" },
     {
-      "match": "^\\s*(>)(?!>)[ \\t]*(agent|adapter|model|effort|approval|hooks|history|skills|codemode|requires|budget|show|tool|instructions|mcp|settings|artifacts|output|subagent|max_agents|workflow|profile|use|package|import|export|auto|optimize|case|data|test_data|metric|if|else|loop|task|await|send|interrupt|task_group|process|map)\\b",
+      "match": "^\\s*(>)(?!>)[ \\t]*(agent|adapter|model|effort|approval|hooks|history|skills|codemode|requires|budget|show|tool|instructions|mcp|settings|artifacts|output|subagent|max_agents|workflow|profile|capability|defer|use|package|import|export|auto|optimize|case|data|test_data|metric|if|else|loop|task|await|send|interrupt|task_group|process|map)\\b",
       "captures": { "1": { "name": "keyword.operator.kedi" }, "2": { "name": "keyword.control.kedi" } }
     },
     {

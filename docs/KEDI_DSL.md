@@ -197,6 +197,16 @@ Bare template lines (without `>>`) are a **parse error** at procedure and top le
 The first prompt line inside `> optimize:` also requires `>>`. Only `> auto:`
 accepts bare rows as a code-generation specification, not an executable template.
 
+For completion models, the runtime sends stable field-filling rules in a
+`<TemplateInstructions>` instruction section, separately from the user message's
+field list and rendered template. When tools, MCP, or skills are enabled, evidence
+and tool-use boundaries appear in a sibling `<ToolCallInstructions>` section.
+Neither section replaces scoped user instructions. The generated completion
+output schema also describes capture values as replacements, not completed
+templates; full sentences remain valid when a field requests them. This does
+not change output types, provider output mode, or returned values. Raw invokes,
+claims, and decision-model templates do not receive completion-specific rules.
+
 ### Raw Model Invokes (`<<`)
 
 When a `>>` prompt has no output fields, Kedi sends the rendered prompt to the active
@@ -1170,6 +1180,67 @@ Kedi routes LLM calls through agent adapters. Use `> adapter:`, `> agent:`,
 to choose adapter implementations, choose models, set reasoning effort, set
 agent instructions, load MCP tools, expose Kedi procedures as agent tools, and
 enable scoped skill discovery.
+
+### Capability Composition
+
+`> capability: name:` defines an additive instruction/tool bundle, distinct from
+the existing override-oriented `> profile:`. Apply either through `> use:`;
+profiles can use capabilities without a separate `> capabilities:` directive.
+Pydantic AI and LangChain support eager composition; Pydantic AI also supports
+deferred loading. Other adapters reject capability use through requirement checks.
+
+```kedi
+> capability: evidence:
+    > instructions: Cite the supplied evidence and identify missing facts.
+
+> instructions: Review the deployment status.
+> use: evidence
+>> Staging verification is still running, so readiness is [readiness: str].
+
+> instructions: Review the deployment status.
+>> The remaining verification step is [step: str].
+```
+
+The first request includes base plus evidence guidance. The second includes only
+base guidance: explicit instructions replace earlier user contributions even
+when the text is unchanged. Capability tools, approval, hooks, history, and
+runtime contracts are not removed. Explicit reuse restores guidance once.
+
+Allowed capability-root members are `instructions`, `use`, `mcp`, `subagent`,
+`approval`, tool-lifecycle `hooks`, `requires`, and `defer`, plus the initial
+docstring. Model/effort/settings, adapter/agent, output, history/compaction,
+budgets, skills discovery, CodeMode policy, artifacts, and prompt-submit hooks
+are rejected. A capability cannot use a profile to bypass this boundary.
+Calling-agent reason and artifact policy remain authoritative.
+
+`defer` defaults to `false`. `true`, or a Python expression producing an actual
+boolean, opts into native on-demand activation. Evaluate once per use context.
+The intended supported adapters are eager/deferred Pydantic AI and eager-only
+LangChain. Unsupported adapter combinations fail before inference. A deferred
+parent reveals its nested deferred catalog entries only after native activation;
+each nested capability must then be loaded separately. A shared nested capability
+is reachable through any activated parent or an explicit direct use, and is
+registered once. Parent and child loads in the same model response do not bypass
+the confirmation boundary.
+After an instruction reset, reusing one parent restores a shared child's guidance
+only through that parent's activated path, independently of declaration order.
+Deferred subagent targets follow the same activation rule. Shared delegation,
+workflow, and lifecycle tools expose only active targets; guessing an inactive
+target is rejected before its owned hooks or child run execute. Background and
+continuation calls retain the captured child binding and policy. CodeMode schema
+discovery follows the same visibility rules.
+Deferred load text may remain in history after instruction reset; reset is not
+history erasure or a security boundary.
+
+Procedures keep their definition-site configuration, including the absence of
+a base instruction. Local instructions replace only their invocation's guidance;
+captured tools remain visible, and the caller is unchanged. This applies across
+IDLE fragments and notebook cells too. A model left unbound still falls back to
+the invoking agent's model; that fallback does not import its instructions/tools.
+See the
+[capability guide](../kedi-docs/docs/agentic-engineering/capabilities.md) for ownership,
+reset/reuse, exported bundles, deferral, and tracing, and
+[Python capability definitions](#python-capability-definitions) for the Python API.
 
 ### Model and profile directives
 
@@ -2215,6 +2286,11 @@ equivalent to `> workflow: delegate` and preserves the delegation and lifecycle
 tools described below. `> workflow: dynamic` instead exposes one sequential
 `run_workflow(code: str)` tool:
 
+Direct children can be declared with `> subagent:` or contributed through a
+capability used by the profile. A deferred capability's children stay unavailable
+until it is loaded. A dynamic profile with no resolved direct child is rejected
+before inference.
+
 ```kedi
 > profile: coordinator:
     > adapter: pydantic
@@ -2532,6 +2608,7 @@ Artifact fields and defaults:
 | --- | --- | --- |
 | `enabled` | `true` | Enables artifact conversion in the current agent scope. |
 | `query_artifacts` | `disabled` | Enables bounded lexical retrieval with the `query_artifact` tool. |
+| `exclude_tools` | `[]` | Exact exposed tool names exempt from automatic result conversion; inline size limits still apply. |
 | `store` | `memory` | Uses the process-local `memory` store or the bounded `file` store. |
 | `path` | `.kedi/artifacts` | File-store root. It is ignored by the memory store. |
 | `threshold` | `100kb` | Minimum serialized byte size converted into an artifact. |
@@ -2553,6 +2630,28 @@ runtime value is needed:
     threshold: `args.artifact_threshold`
     ttl: `timedelta(minutes=30)`
 ```
+
+To keep selected tool results inline, use exact exposed names:
+
+```kedi
+> artifacts:
+    exclude_tools: `["read_status", "lookup_region"]`
+```
+
+The list replaces an inherited exclusion list; an empty list clears it. Duplicate
+names are normalized, and wildcard patterns are rejected. Exclusions do not
+disable approval, hooks, tracing, or the 100,000-byte inline tool-result limit.
+Oversized excluded results are rejected rather than inserted into model history.
+Generated output captures and existing artifact references are unchanged.
+
+Pydantic AI and LangChain warn about exclusion names absent from the resolved
+tool catalog. This is a diagnostic, not a run failure. Validation uses MCP's
+exposed names and CodeMode's underlying tools, not only `execute_code`. Known
+deferred tools are valid targets before activation. Pydantic checks the union of
+catalogs observed during the run; if deferred capabilities remain inactive, an
+unmatched name is reported as unverified rather than definitively unknown.
+Diagnostics do not load capabilities or execute tools. Native MCP discovery may
+still open sessions before activation; deferral is not a no-connection promise.
 
 The policy is lexical. A nested directive changes subsequent calls in that
 scope. `query_artifacts: enabled` exposes lexical artifact retrieval only in
@@ -3021,6 +3120,38 @@ specification. ACP advertises no structured-output capability, so its
 `produce()` surface raises `NotImplementedError` for either form. A2A support is
 endpoint-specific: `produce()` requires a peer advertising Kedi's versioned
 structured-output extension and otherwise fails before sending the task.
+
+### Python Capability Definitions
+
+`kedi.Capability` defines an adapter-neutral contribution of tools, guidance,
+and owned policies. Bind the descriptor through the existing query `env` or
+runtime globals, then apply it with `> use: name`. The alias in the environment
+does not change the descriptor's stable identity.
+
+- Required `name` is an identifier; optional `identity` should be qualified for
+  published bundles and otherwise defaults to `python:<name>`.
+- `instructions` contributes additive guidance, unlike a profile instruction
+  override. `capabilities` composes nested descriptors after that guidance.
+- `tools` accepts callables or `ToolSpec`; `mcp_servers` accepts `McpServerSpec`.
+  `subagents` binds existing `ProfileDefinition` values by matching name.
+- Optional `approval` is an `ApprovalPolicy`; `hooks` contains only owned tool
+  lifecycle handlers. Host model/settings/history/artifact/reason policy and
+  `user_prompt_submit` are not capability configuration.
+- `defer` is a boolean, default false. `requires` validates canonical adapter
+  requirements. Unsupported use fails before model I/O, including deferred use
+  on LangChain.
+- `as_profile()` lowers through the same additive patch/merge contract as Kedi
+  source. It does not run tools, activate a capability, or register tools on a
+  standalone adapter without the normal runtime binding path.
+- Input collections and mutable schema/MCP data are snapshotted; executable
+  tool identity is preserved. Shared definitions do not own mutable run state.
+  Exported profiles retain private Python capability dependencies across imports.
+- Native framework `capabilities=` forwarding through `configure` and `context`
+  remains native. It is not reinterpreted as this portable descriptor API;
+  `query` uses `env` and `> use:` rather than a new constructor parameter.
+
+The descriptor uses the same adapter support checks as Kedi source. Being
+importable does not make an unsupported adapter accept capability composition.
 
 ### Agent adapter capability contract
 
