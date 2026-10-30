@@ -83,6 +83,55 @@ It can span multiple lines.
 - Block: Lines containing only `###` (trimmed) start/end blocks; must appear in matching pairs
 - Procedure docstrings: if the first statement inside a procedure body is a block comment, its body becomes the procedure's Python `__doc__` and is surfaced in editor hovers / virtual stubs
 
+### Directive Values
+
+Directive fields have explicit value contracts, shared by the parser, runtime,
+and language server. Boolean fields use lowercase `true` and `false`; short
+activation directives and named activation options retain `enabled` and
+`disabled`. A whole backtick expression supplies a computed value:
+
+```kedi
+> history: enabled
+> skills:
+  enabled: `os.getenv("ENABLE_SKILLS") is not None`
+> settings:
+  parallel_tool_calls: false
+  tool_reason: enabled
+  stop_sequences: `["END", "STOP"]`
+  tool_choice: none
+> artifacts:
+  enabled: true
+  query_artifacts: `os.getenv("ENABLE_QUERY") is not None`
+  store: file
+```
+
+The example assumes `os` is imported in the Python prelude. Computed activation
+values must return Python `bool`, including short history/skills/codemode/hooks
+directives and `query_artifacts`. Ordinary options return strings from the same
+closed set as their plain form. Quoted plain values and Python containers
+require backticks; they are not implicitly decoded. Numeric fields accept
+numeric literals or numeric expressions, with their own bounds and units.
+Booleans do not count as integers. Text fields preserve literal text.
+
+There is no generic null/reset literal. Omission uses the field's existing
+default or inheritance behavior; it does not clear an inherited configuration.
+`tool_choice: none` is the string option that forbids tool calls, not Python
+`None`. A Boolean or option field cannot be reset with a Python `None` either.
+Handler fields require callable expressions. `approval` additionally accepts
+the built-in policies `allow` and `deny`. Structural declarations and package
+metadata retain their own syntax. Instructions remain templates, so Python
+interpolation there uses angle brackets around the backtick expression.
+
+The language server suggests known options while typing a value or requesting
+completion manually, and reports invalid static literals as errors. It never
+executes Python expressions for editor validation; computed values are checked
+at runtime. SDK-specific options are validated against the final selected
+adapter before model I/O. Static analysis uses SDK option sets only when the
+adapter can be resolved without executing Python; it does not guess dynamic
+selections or the kind of a Python binding that may shadow a profile.
+The Python API still accepts native SDK objects for SDK-owned settings.
+A colon alone does not open an automatic completion menu.
+
 ### Module Imports and Exports
 
 Kedi modules can explicitly export top-level procedures, types, and values. Another `.kedi` file imports the module by file name without the `.kedi` suffix:
@@ -1829,8 +1878,8 @@ This language rename does not change the Python `system=` configuration API.
   exposes known run/source/tool lineage outside the model-visible message content.
   Unknown lineage remains absent; it is not inferred from assistant text.
 
-  The `processor` field is lexical: omission inherits, while an explicit
-  ``processor: `None` `` clears the callback for that scope. Python constructor
+  The `processor` field is lexical: omission inherits, and an explicit value
+  must evaluate to a callable. Python constructor
   `history_processor=` defaults are not mutated. `enabled` still controls
   conversation continuity; disabled history does not disable processing of an
   invocation's ephemeral tool loop. Only adapters advertising `history_processing`
