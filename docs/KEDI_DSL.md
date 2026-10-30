@@ -606,7 +606,7 @@ Procedure parameters can have single-line inline Python defaults:
 = <format_count(`3`)>
 ```
 
-Required positional parameters must come before defaulted parameters, matching Python function semantics. Untyped parameters with defaults keep their native Python value; Kedi does not infer or coerce their type.
+Required positional parameters must come before defaulted parameters, matching Python function semantics. Untyped parameters are `str` parameters, including when they have a default; a non-`str` default raises when the procedure uses it. Annotate the parameter when its default is another native type.
 
 You can use either regular or backtick-wrapped type annotations for parameters and return types. They work interchangeably and provide the same type safety guarantees.
 
@@ -3966,12 +3966,12 @@ as unexecuted.
 
 #### Durable Session Snapshots
 
-`kedi.dump_session(session, path)` persists a complete, pickle-free snapshot
-when every part of the logical session state can be restored without replaying
-executable fragments. `kedi.load_session(path)` recompiles source-backed
-declarations, restores their native values, and continues with the next cell.
-The corresponding `InteractiveSession.dump()` and
-`InteractiveSession.load()` methods expose the same operations:
+`kedi.dump_session(session, path)` defaults to a complete, pickle-free
+`format="portable"` snapshot when the logical session can be restored without
+replaying executable fragments. `kedi.load_session(path)` reconstructs
+declarations and native values, then continues with the next cell.
+`InteractiveSession.dump()` and `InteractiveSession.load()` expose the same
+operations:
 
 ```python
 from pathlib import Path
@@ -4009,7 +4009,7 @@ types. Procedure, type, and profile definitions are rebuilt from the source
 stored in the snapshot. Fragment source digests and a document integrity hash
 are verified during load. Snapshot format and Kedi versions must match.
 
-The following state is rejected rather than silently dropped or changed:
+Portable mode rejects the following state rather than silently dropping it:
 
 - arbitrary Python callables, classes, generators, file/socket handles,
   threads, locks, tasks, futures, and unknown object instances;
@@ -4037,16 +4037,66 @@ session = kedi.load_session(
 defaults to `InteractiveSession`. Pass an `InteractiveSession` subclass when
 the restored object needs application-specific session behavior.
 
-Lifecycle hooks use module and qualified-name descriptors rather than pickle.
-Only importable top-level functions are restorable; lambdas, local functions,
-closures, bound methods, and handlers from `__main__` reject the dump. Load only
-trusted snapshots: resolving a hook imports its Python module and may run that
-module's ordinary import-time code, although the hook itself is not called.
+Portable lifecycle hooks use module and qualified-name descriptors rather than
+pickle. Only importable top-level functions are restorable in that mode;
+lambdas, local functions, closures, bound methods, and handlers from `__main__`
+reject the portable dump. Load only trusted snapshots: resolving a hook imports
+its Python module and may run that module's ordinary import-time code, although
+the hook itself is not called.
 
 `dump()` also rejects an executing or closed session. Apart from resolving
 documented import-addressable hooks, loading never executes old top-level
 initializations, template calls, tool calls, or other side effects; only
 source-backed declarations are compiled before saved values are installed.
+
+For supported local Python object graphs, install `kedi[snapshots]` and explicitly
+select Python mode:
+
+```python
+with kedi.interactive() as session:
+    session.execute("[step: Any] = `(lambda n: lambda: n + 2)(40)`")
+    session.dump("python-session.kedi-state", format="python")
+
+with kedi.load_session("python-session.kedi-state", trusted=True) as session:
+    session.execute("> show: `step()`")  # displays 42
+```
+
+Python mode uses one cloudpickle graph for user values and session-local
+reconstruction of Kedi-owned objects. It preserves supported dynamic Python
+classes/functions, shared closure cells and captured builtins, shared/cyclic
+references, prelude namespaces, evaluated defaults, and initialized Kedi module state without replaying saved
+prelude/module initialization or model/tool calls. Existing name-based procedure
+wrappers retain their normal lookup behavior after redefinition.
+
+The archive can also include completed Pydantic/LangChain single-lane history
+and persistable artifacts. Artifact payloads are included, their original
+expiry/release state is retained, and extracted files live with their owning
+session or explicitly supplied conversation. Unsupported lanes and opaque
+artifacts fail instead of being replaced with empty state.
+Reserved or unfinished conversation turns also reject dumps. Failed restoration
+attempts release all newly owned resources without closing caller-supplied owners
+or replacing the original failure with a cleanup error.
+
+**Python snapshots are executable code, not a safe data interchange format.**
+Loading requires `trusted=True` before deserialization. User reducers, Python
+package imports, and custom schema reconstruction hooks may execute; graph
+values may contain credentials. Hashes detect corruption, not authenticity.
+Archive member counts, directory boundaries, safe names and resource digests are
+validated before executable graph deserialization; these checks do not sandbox it.
+Python implementation/full version and Kedi/cloudpickle versions must match.
+The snapshot also pins every installed distribution whose modules the graph
+imports by reference, their runtime dependencies, and Pydantic; those versions
+must match exactly. Unrelated packages may differ, be added, or be removed.
+Local modules without an installed distribution are not version-checked. No
+packages are installed automatically; external resources and compatible native dependencies
+must already exist. This is not arbitrary cross-platform or cross-version migration.
+
+Only the default local Python executor is supported for Python snapshots.
+Notebook/bridged executors keep their existing portable behavior and never trust
+uploaded Python snapshots implicitly. Open files/sockets, running tasks, threads,
+generators, and other unsupported live resources reject Python dumps.
+Adapters, executors, transports and thread pools are reconstructed or supplied,
+not copied from the old process. Normal noninteractive execution is unchanged.
 
 Interactive fragments do not accept package metadata, export directives, or
 `@test`/`@eval` suites. Those constructs describe whole files or package/test
@@ -4123,6 +4173,14 @@ changes back to the same snapshot:
 kedi --idle --record
 kedi --idle --load ~/.kedi/sessions/idle-20260826T120000-ab12cd34.kedi-state
 ```
+
+For Python snapshots, use `kedi --idle --snapshot-format python` (optionally with
+`--record`) and resume with `kedi --idle --load PATH --trust-snapshot`.
+`:dump` prints the required trust option and a code-execution warning. A loaded
+Python session keeps Python recording mode unless `--snapshot-format portable`
+is explicitly supplied; an unsupported conversion fails without overwriting the
+existing snapshot. `--snapshot-format` requires `--idle`; `--trust-snapshot`
+requires both `--idle` and `--load`.
 
 Top-level results use `repr()` so native values remain visible without changing
 their runtime semantics. `:exit` is the only textual exit command; Python's
