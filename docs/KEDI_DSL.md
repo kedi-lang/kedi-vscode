@@ -461,9 +461,51 @@ never become Kedi bindings. `> else:` is optional. There is no
 `elif`; use a nested `> if:` when another condition is required.
 
 Directives selected inside a branch apply only within that branch.
+Conditional configuration inside profiles and capabilities is the exception
+described below: its selected members contribute to the enclosing bundle.
 The first evaluated `=` in a selected body ends the enclosing procedure or
 regular program. Other branches remain valid return sites; later statements
 on the selected path do not execute.
+
+### Conditional Profile and Capability Members
+
+Profiles and capabilities may group configuration under deterministic guards:
+
+```kedi
+[prefer_quality: bool] = `True`
+
+> profile: reviewer:
+  > adapter: pydantic
+  > if: `prefer_quality`:
+    > model: openai:gpt-5.6-sol
+    > effort: high
+  > else:
+    > model: openai:gpt-5.6-luna
+    > effort: medium
+
+> use: reviewer
+```
+
+The guard is evaluated exactly once per application, using the same environment
+as computed profile members, and must produce an exact Python `bool`. Only the
+selected branch's expressions and uses are evaluated. Its members merge into
+the enclosing bundle in source order; they do not create the transient directive
+scope of an executable branch. A missing `else` contributes nothing when false.
+Nested deterministic guards are supported; template-claim guards, executable
+statements, and `elif` are not configuration members.
+
+Both branches are parsed and checked against the enclosing bundle's rules.
+In particular, capabilities still cannot set `model`, `effort`, `settings`, or
+other caller-owned configuration, even in an unselected branch. Their selected
+instructions remain additive and their approval/hooks remain tool-owned.
+An active path may not select both `agent` and `adapter`, or declare multiple
+`output` or `workflow` members in one profile. Mutually exclusive branches may
+declare different selections. Dynamic-workflow child requirements are checked
+after the chosen members have merged.
+
+Applying a profile before a procedure definition captures the selected
+configuration at that definition site. Editor analysis and `kedi explain`
+never execute guards to guess a selected branch.
 
 ### Template conditions
 
@@ -2168,6 +2210,14 @@ profile output type to JSON Schema and returns the validated value in
 `final_result`. An explicit `final_schema` takes precedence. If neither is
 present, the child keeps the text-only `task_summary` behavior.
 
+All three schema sources (explicit `final_schema`, profile `> output:`, and task
+captures) support document-local JSON Pointer references such as
+`#/$defs/Person`. Kedi expands them before wrapping the child result, preserving
+nested model, list, union, and repeated-definition constraints without mutating
+the input schema. External references, `$id`, dynamic references, unresolved
+targets, and recursive expansion are rejected. The 32 KiB size and nesting-depth
+16 limits apply to both the source schema and its expanded form.
+
 #### Native task and await
 
 `> task` admits a direct child immediately, without a coordinator model call.
@@ -2210,6 +2260,14 @@ Both children may run before the first await. `> await [result]: job` blocks at
 that statement and binds a `SubagentResult`. `> await: job` also blocks and
 propagates errors but creates no binding. Repeated awaits return the same
 result without starting another child. `SubagentResult` exposes `output`,
+All three schema sources (explicit `final_schema`, profile `> output:`, and task
+captures) support document-local JSON Pointer references such as
+`#/$defs/Person`. Kedi expands them before wrapping the child result, preserving
+nested model, list, union, and repeated-definition constraints without mutating
+the input schema. External references, `$id`, dynamic references, unresolved
+targets, and recursive expansion are rejected. The 32 KiB size and nesting-depth
+16 limits apply to both the source schema and its expanded form.
+
 `task_summary`, `run_id`, and `subagent` as attributes. Task captures define
 a validated result model with attribute-accessible fields; they do not bind
 names in the parent. Do not combine task captures with the child's `> output:`
