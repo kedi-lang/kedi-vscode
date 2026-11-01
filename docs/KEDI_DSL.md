@@ -2702,7 +2702,16 @@ commit. Installation never writes into the current project.
 
 Artifacts keep large generated fields and tool results out of model prompts
 without changing their native Kedi or Python value. They are enabled by
-default and can be configured at top level, inside a procedure, or in a profile:
+default and can be configured at top level, inside a procedure, or in a profile.
+
+The artifact contract is attached statically: when the adapter supports it, every
+model request of an enabled profile carries the artifact tools and their
+instructions, whether or not any value is ever large, so the prompt prefix stays
+stable for caching. That costs on the order of a thousand input tokens per
+request. A profile that never produces large values, for example a short-lived
+subagent that reads small files, can drop it with `> artifacts: enabled: false`.
+Keep it enabled wherever a tool may return a large result, because a disabled
+profile sends that result to the model in full.
 
 ```kedi
 > artifacts:
