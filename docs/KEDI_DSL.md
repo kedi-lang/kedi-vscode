@@ -2388,9 +2388,13 @@ or duplicate process clause is not.
 
 #### Dynamic Workflows
 
-Subagent orchestration has two profile-level modes. Omitting `> workflow:` is
+Subagent orchestration has three profile-level modes. Omitting `> workflow:` is
 equivalent to `> workflow: delegate` and preserves the delegation and lifecycle
-tools described below. `> workflow: dynamic` instead exposes one sequential
+tools described below. `> workflow: blocking` keeps only a synchronous
+`delegate_task`: it has no `background` argument and no continuation, wait,
+cancel, status or live-input tools, and its children get no channel back to it.
+It suits fan-out work that needs none of those controls and leaves their schemas
+out of every request. `> workflow: dynamic` instead exposes one sequential
 `run_workflow(code: str)` tool:
 
 Direct children can be declared with `> subagent:` or contributed through a
@@ -2473,6 +2477,11 @@ text `invoke` seam. With either schema source, Kedi asks for a short
 `task_summary` plus the schema-conforming result and validates the response
 again before returning it. The tool result
 always includes `run_id`, `subagent`, `task_summary`, and `final_result`.
+
+Any failure of a subagent tool is returned to the calling model as a tool error
+instead of ending the run: malformed arguments (reported against the tool's
+schema), a child failure, or a child exceeding its usage limits. The model can
+correct the call or give up. Run budgets and cancellation still end the run.
 
 In delegate mode, every subagent-capable adapter also exposes
 `continue_subagent`. It accepts a
@@ -3368,7 +3377,7 @@ adapter = PydanticAdapter(model)
 This bridge requires Python 3.11+ and is installed with
 `uv add 'kedi[codex-model]'`. Authentication comes from the user's Codex login;
 Kedi does not accept or persist a second token for this path. The extra pins
-`codex-auth-helper[websocket]==1.8.0`, including its required WebSocket SDK support.
+`codex-auth-helper[websocket]==1.10.1`, including its required WebSocket SDK support.
 
 The Pydantic and LangChain paths can explicitly keep one Responses WebSocket for an adapter
 run when the installed helper includes its `websocket` extra:
@@ -3384,7 +3393,7 @@ adapter = PydanticAdapter(model)
 ```
 
 Kedi owns the connection lifecycle around the complete logical run, including
-its model/tool turns. HTTP remains the default. Helper 1.8.0 retries
+its model/tool turns. HTTP remains the default. The pinned helper retries
 transient WebSocket failures for non-streaming model responses, rebuilding full
 history without rerunning completed local tools. The client `max_retries`
 controls reconnects (default two); `fallback="http"` additionally permits HTTP
