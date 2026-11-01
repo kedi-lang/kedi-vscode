@@ -477,10 +477,10 @@ Profiles and capabilities may group configuration under deterministic guards:
 > profile: reviewer:
   > adapter: pydantic
   > if: `prefer_quality`:
-    > model: openai:gpt-5.6-sol
+    > model: openai:gpt-6.1-sol
     > effort: high
   > else:
-    > model: openai:gpt-5.6-luna
+    > model: openai:gpt-6-luna
     > effort: medium
 
 > use: reviewer
@@ -1344,14 +1344,14 @@ This language rename does not change the Python `system=` configuration API.
 
 ```kedi
 > adapter: pydantic
-> model: openai:gpt-5.6-luna
+> model: openai:gpt-6-luna
 > effort: low
 > approval: allow
 > instructions: Answer concisely and avoid extra narration.
 
 > profile: fast:
     > adapter: pydantic
-    > model: openai:gpt-5.6-luna
+    > model: openai:gpt-6-luna
     > effort: minimal
     > settings:
         temperature: 0.2
@@ -1361,7 +1361,7 @@ This language rename does not change the Python `system=` configuration API.
         Adapt examples for <audience>.
 > profile: quality:
     > agent: codex
-    > model: gpt-5.6-luna
+    > model: gpt-6-luna
     > requires: stream_events
     > effort: high
     > instructions: Be precise and cite the relevant tool output.
@@ -1443,7 +1443,7 @@ This language rename does not change the Python `system=` configuration API.
 
   ```kedi
   > adapter: pydantic
-  > model: codex/gpt-5.6-luna
+  > model: codex/gpt-6-luna
   > effort: high
   ```
 
@@ -3404,7 +3404,7 @@ structured outputs, profiles, and effort settings remain active:
 from kedi import codex_responses_model
 from kedi.agent_adapter import PydanticAdapter
 
-model = codex_responses_model("gpt-5.6-luna", adapter="pydantic")
+model = codex_responses_model("gpt-6-luna", adapter="pydantic")
 adapter = PydanticAdapter(model)
 ```
 
@@ -3418,7 +3418,7 @@ run when the installed helper includes its `websocket` extra:
 
 ```python
 model = codex_responses_model(
-    "gpt-5.6-luna",
+    "gpt-6-luna",
     adapter="pydantic",
     connection="websocket",
     fallback="error",
@@ -3645,7 +3645,7 @@ from kedi.agent_adapter import LangChainAdapter
 from kedi.agent_adapter.conversation import ConversationState
 
 model = codex_responses_model(
-    "gpt-5.6-luna", adapter="langchain", connection="websocket",
+    "gpt-6-luna", adapter="langchain", connection="websocket",
 )
 adapter = LangChainAdapter(model, model_settings={"reasoning": {"effort": "high"}})
 conversation = ConversationState(session_id="release-review")
@@ -3834,7 +3834,7 @@ from kedi import AgentMessageEvent, AgentRunStateEvent, observe_agent_events
 from kedi.agent_adapter import PydanticAdapter
 
 events = []
-adapter = PydanticAdapter("openai:gpt-4o-mini")
+adapter = PydanticAdapter("openai:gpt-6-luna")
 
 with observe_agent_events(events.append):
     result = asyncio.run(adapter.invoke(prompt="Inspect the parser."))
@@ -3910,9 +3910,9 @@ kedi.configure(
 Framework adapters and agent harnesses use separate parameters:
 
 ```python
-kedi.configure(adapter="pydantic", model="openai:gpt-4o-mini")
+kedi.configure(adapter="pydantic", model="openai:gpt-6-luna")
 
-with kedi.context(agent="codex", model="gpt-5"):
+with kedi.context(agent="codex", model="gpt-6.1-sol"):
     run_task()
 ```
 
@@ -4521,7 +4521,7 @@ uv build
 kedi-terminal-bench manifest \
   --output runs/pilot.json \
   --harbor-revision 389bd4f8ce796ef4a97de4b62675021e262c8e76 \
-  --model codex/gpt-5.6-luna \
+  --model codex/gpt-6-luna \
   --effort high \
   --kedi-wheel dist/kedi-0.4.0-py3-none-any.whl \
   --timeout-multiplier 1 \
