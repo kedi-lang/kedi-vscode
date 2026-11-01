@@ -4734,6 +4734,11 @@ The system will:
 2. Implement the procedure iteratively until tests pass
 3. Cache the implementation in `source.cache.kedi`
 
+Cache blocks become reusable only after tests pass and a completion marker is
+written. Provisional or older unmarked blocks are regenerated. Exceptions and
+cancellation clean up only the affected procedure's incomplete block; other
+cached procedures are preserved.
+
 Unknown `>` directives will raise a directive error. Valid directives include
 `auto`, `data`, `test_data`, `metric`, `optimize`, `model`, `effort`, `skills`,
 `instructions`, `mcp`, `profile`, `use`, `import`, and `export`.
