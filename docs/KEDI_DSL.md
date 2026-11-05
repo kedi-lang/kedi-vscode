@@ -272,9 +272,29 @@ To keep the raw model response, put an untyped capture target in front of `<<`:
 = <answer>
 ```
 
-Raw invoke captures always produce strings. `[answer: str] << ...` is accepted but
-redundant, while any other capture type is an error. Raw invoke prompts cannot contain
-output fields such as `[capital]`; use `>>` when you want structured field filling.
+An untyped capture keeps the model's text response as a string. `[answer: str] << ...`
+is accepted but redundant.
+
+Any other capture type asks the adapter for that type through its native structured
+output:
+
+```kedi
+~Report(title, risks: list[str], score: int)
+
+[report: Report] << Review <diff> and report the main risks.
+[count: int] << How many services does <spec> describe?
+```
+
+The rendered prompt is sent unchanged, without field-filling rules, and the response
+schema is the capture type itself rather than an object with one property per field.
+The returned value is validated like a template output, and the binding keeps the
+declared type, so a later `:=` is validated against it. Artifact policy applies after
+validation, as it does to template outputs. A typed capture is a structured (`produce`)
+model call: the adapter must support structured output, and hooks and telemetry report
+it as structured. An untyped or `str` capture remains a text (`invoke`) call.
+
+Raw invoke prompts cannot contain output fields such as `[capital]`; use `>>` when you
+want the model to fill named fields inside a template.
 
 ### Substitutions (R-values)
 
