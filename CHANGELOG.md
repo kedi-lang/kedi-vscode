@@ -2,6 +2,25 @@
 
 All notable changes to the Kedi VS Code extension are documented here.
 
+## [3.3.0] - Unreleased
+
+### Added
+
+- Debug Kedi programs from the editor through the integrated Kedi debugger;
+  the managed runtime installs `kedi-debugger`.
+- Highlight capability, workflow and conditional profile members, and
+  highlight Kedi files without a running language server.
+- Show CodeMode preload diagnostics from the language server.
+
+### Changed
+
+- The managed runtime installs `kedi==0.4.0`, `tree-sitter-kedi==0.4.4` and
+  `kedi-debugger==0.1.0`, and reinstalls when these pins change.
+- Harden the managed editor runtime and align it with directive value
+  contracts.
+- Bundle the current Kedi language specification, including typed raw invoke
+  captures, workflow blocks, task groups and native tasks.
+
 ## [3.1.0] - 2026-09-20
 
 ### Added
