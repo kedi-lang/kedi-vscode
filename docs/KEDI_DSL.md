@@ -3432,7 +3432,7 @@ adapter = PydanticAdapter(model)
 This bridge requires Python 3.11+ and is installed with
 `uv add 'kedi[codex-model]'`. Authentication comes from the user's Codex login;
 Kedi does not accept or persist a second token for this path. The extra pins
-`codex-auth-helper[websocket]==1.10.1`, including its required WebSocket SDK support.
+`codex-auth-helper[websocket]==1.13.0`, including its required WebSocket SDK support.
 
 The Pydantic and LangChain paths can explicitly keep one Responses WebSocket for an adapter
 run when the installed helper includes its `websocket` extra:
@@ -4526,9 +4526,9 @@ integration separately from the task-container runtime:
 python3.12 -m pip install 'kedi[terminal-bench]'
 ```
 
-The host extra pins `codex-auth-helper==1.8.0` for credential management.
+The host extra pins `codex-auth-helper==1.13.0` for credential management.
 For Codex routes, the isolated task runtime installs
-`codex-auth-helper[websocket]==1.8.0`. Keep `terminal-bench` separate from
+`codex-auth-helper[websocket]==1.13.0`. Keep `terminal-bench` separate from
 `codex-model` and the development group: Harbor's LiteLLM dependency requires
 OpenAI `<3`, while the WebSocket runtime requires OpenAI `>=3.8.0`.
 
