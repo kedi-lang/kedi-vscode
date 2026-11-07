@@ -3532,6 +3532,15 @@ messages and permits three corrections per tool per run by default
 (`tool_retries=3`); it does not automatically repeat a side-effecting operation.
 Unclassified application exceptions and cancellation remain failures.
 
+Structured output gets a bounded correction on both adapters. When native output
+fails parsing or validation, including Kedi's JSON Schema check of a subagent
+result, the failed response and the validation feedback go back to the model for
+another turn: Pydantic AI through its output retries (one by default,
+`retries={"output": n}`), LangChain through `output_retries` (default `1`). Each
+correction is an actual model request, counted by `request_limit` and usage limits.
+A truncated response is reported as incomplete, not corrected; when corrections run
+out, the original validation error ends the run.
+
 Exact history archival is opt-in and requires an active artifact manager/policy:
 
 ```python
@@ -4740,6 +4749,105 @@ Rules:
 - The optimizer uses training data to improve prompts iteratively.
 - Test data (if provided) participates in validation and candidate selection. Keep separate untouched final evaluation data to measure generalization.
 
+## Evolve Groups
+
+`> evolve: name:` names a region of a procedure or of the top level whose body a
+validated form can replace at run time. Without a form, the program runs as if the
+directive were absent and sends the same model requests, byte for byte.
+
+```kedi
+@solve(problem: str) -> str:
+  > evolve: planner:
+    >> Break <problem> into steps: [steps: list[str]]
+    [plan] << Turn <steps> into a short numbered plan.
+
+  = <plan>
+```
+
+Rules:
+- A group is scope-transparent: names its body binds stay visible after it, like
+  `plan` above.
+- The body may contain templates, raw invokes, bindings, control flow, tasks, and
+  Python. It cannot return, define procedures or types, contain directives, or nest
+  another group, including `> optimize:`.
+- Group names are unique per module by qualified name, `<procedure>.<name>` or a
+  top-level `<name>`, and share that name space with `> optimize:` spans.
+
+Every group has an identity that does not depend on source lines:
+`kedi:group:<module>:<qualified name>`. `<module>` is the module's import name as the
+root program sees it: the root file's name without `.kedi`, a path such as
+`services/profiles` for modules below it, or the package name. Adding lines above a
+group keeps its identity. An `> optimize:` span is a group,
+`kedi:group:<module>:<procedure>.<span>`, and so is a procedure that an `> auto:`
+cache implements, `kedi:group:<module>:<procedure>`.
+
+With telemetry enabled, each run records the group's active form as a `form` asset.
+Its content is the body's canonical text: comments removed and indentation
+normalized by nesting depth, template text kept exactly, since that is what the
+model receives. Its fingerprint identifies the form, so comment-only and
+indentation-only edits are not new forms. Each model call of the form is the
+template `kedi:template:<module>:<qualified name>#<ordinal>`, numbered by its
+position among the form's model calls, and links to the form.
+
+### Forms
+
+A form is a body for one group. The source body is the default form; a supplied form
+runs in its place without changing the source file. A forms file maps group names to
+forms. Groups of the root module are named by their qualified name, groups of an
+imported module by `<module>:<qualified name>`:
+
+```json
+{
+  "solve.planner": {"body": "forms/planner-3.kedi", "parent": "3fa2c19b...", "note": "one call"},
+  "lib/helpers:helper.draft": {"text": "[answer] << Answer <x> in one word."}
+}
+```
+
+- `body` names a file of unindented body statements, relative to the forms file;
+  `text` holds them inline. Give exactly one.
+- `parent` is optional: the 64-character fingerprint of the form this one derives from.
+- `note` is optional: the producer's reason for the form.
+- A form for a group or module the program does not have is an error.
+
+```bash
+kedi solve.kedi --forms forms.json
+kedi solve.kedi --test --forms forms.json
+```
+
+From Python, pass the same mapping to `compile_program(program, forms=...)`, built with
+`kedi.forms.load_forms(path)` or from `kedi.forms.Form(text, parent=..., note=...)`
+values. `run_tests` and `run_evals` take `forms=` too, so a form can be checked against
+the program's tests before it is used.
+
+Before the program runs, each form passes a gate. A form that breaks a rule is
+rejected with that rule, and nothing runs:
+
+1. Parse: the form parses as the group's body under the same body rules. A form for
+   an `> optimize:` span is exactly one template block, and a span that already runs a
+   `.optimized.json` result takes no form.
+2. Python: the form contains no Python, even when the source body does: no Python
+   blocks or backtick statements, backtick expressions or types, Python conditions, or
+   loops, whose iterables are Python. Kedi values are Python globals, so Python could
+   bypass the interface rules. Move computation that needs Python out of the group.
+3. Interface: the form binds every name that the source body binds and later code
+   reads, with the same declared type. It reads only names visible at the group. It
+   does not bind or reassign with `:=` a name visible before the group unless the
+   source body does too.
+
+The `form` asset records who produced the active form, as metadata `producer`:
+`source`, `supplied`, `optimizer`, `codegen`, or `runtime`, together with `note` and
+the declared parent as the asset's `parent_fingerprint`. None of them is part of the
+form's identity: the same text is the same form whoever produced it. An optimizer
+result runs as the optimizer's form, its prompt prefix ahead of the span's text, with
+the span's source form as parent.
+
+`runtime.propose_form(group, text, parent=..., note=...)` gates a form while the
+program is loaded, for example one an agent or a search loop wrote. An accepted form
+runs from the group's next execution in this process and returns its fingerprint; an
+execution already inside the group finishes with the form it started with. A rejected
+form raises `FormError` with the broken rule, and the active form keeps running. Saving
+an accepted form, for example to a forms file, is the caller's job.
+
 ## AI-Generated Procedures
 
 Define procedure signatures with an explicit `> auto:` block (replaces the old implicit `>` form):
@@ -4761,7 +4869,7 @@ cancellation clean up only the affected procedure's incomplete block; other
 cached procedures are preserved.
 
 Unknown `>` directives will raise a directive error. Valid directives include
-`auto`, `data`, `test_data`, `metric`, `optimize`, `model`, `effort`, `skills`,
+`auto`, `data`, `test_data`, `metric`, `optimize`, `evolve`, `model`, `effort`, `skills`,
 `instructions`, `mcp`, `profile`, `use`, `import`, and `export`.
 
 ## Complete Example with Explanations
