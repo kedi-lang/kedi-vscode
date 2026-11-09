@@ -14,7 +14,7 @@ All notable changes to the Kedi VS Code extension are documented here.
 
 ### Changed
 
-- The managed runtime installs `kedi==0.1.2`, `tree-sitter-kedi==0.4.5` and
+- The managed runtime installs `kedi==0.1.4`, `tree-sitter-kedi==0.4.6` and
   `kedi-debugger==0.1.0`, and reinstalls when these pins change.
 - Harden the managed editor runtime and align it with directive value
   contracts.

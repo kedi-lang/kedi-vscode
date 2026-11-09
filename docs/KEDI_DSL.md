@@ -4300,7 +4300,7 @@ $ kedi --idle
  /\_/\
 ( o.o )
  > ^ <
-Kedi 0.1.2 on darwin
+Kedi 0.1.4 on darwin
 Type "help" for interactive help, ":show" to inspect a value, ":multiline" for a multiline fragment, ":dump" to save, or ":exit" to leave.
 +++ [base: int] = `40`
 +++ @add_two() -> int:
@@ -4560,7 +4560,7 @@ kedi-terminal-bench manifest \
   --harbor-revision 389bd4f8ce796ef4a97de4b62675021e262c8e76 \
   --model codex/gpt-6-luna \
   --effort high \
-  --kedi-wheel dist/kedi-0.1.2-py3-none-any.whl \
+  --kedi-wheel dist/kedi-0.1.4-py3-none-any.whl \
   --timeout-multiplier 1 \
   --agent-timeout-multiplier 1 \
   --verifier-timeout-multiplier 1 \
@@ -4589,7 +4589,7 @@ prevents a different Kedi build from entering the official task container:
 
 ```bash
 kedi-terminal-bench run runs/pilot.json \
-  --kedi-wheel dist/kedi-0.1.2-py3-none-any.whl \
+  --kedi-wheel dist/kedi-0.1.4-py3-none-any.whl \
   --jobs-dir runs/jobs \
   --job-name pilot-1
 ```

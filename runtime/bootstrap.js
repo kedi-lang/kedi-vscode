@@ -11,7 +11,7 @@ const lockfile = require("proper-lockfile");
 const exec = promisify(execFile);
 const UV_VERSION = "0.11.21";
 const PYTHON_VERSION = "3.12";
-const PACKAGES = ["kedi==0.1.2", "tree-sitter-kedi==0.4.5", "kedi-debugger==0.1.0"];
+const PACKAGES = ["kedi==0.1.4", "tree-sitter-kedi==0.4.6", "kedi-debugger==0.1.0"];
 const OWNER = "kedi-editor-runtime-v1";
 const ASSETS = {
     "darwin-arm64": ["aarch64-apple-darwin.tar.gz", "1f921d491ba5ffeea774eb04d6681ecee379101341cbb1500394993b541bf3f4"],
