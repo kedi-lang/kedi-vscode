@@ -4058,9 +4058,11 @@ kedi notebook --python ~/.pyenv/versions/3.12.4/bin/python --port 8899
 Selecting host Python does not install packages into that interpreter. Kedi
 creates a persistent virtual environment named `kedi-notebook-py...` under
 `~/.kedi/notebook/venvs`, keyed by the selected interpreter and notebook
-working directory. The first host session installs the active Kedi checkout
-and its runtime dependencies; later sessions reuse the environment while it is
-valid. Set `KEDI_NOTEBOOK_ENV_HOME` to move this environment store.
+working directory. The first host session installs Kedi and its runtime
+dependencies: the active Kedi checkout when the notebook runs from one,
+otherwise the notebook's Kedi version from PyPI. Later sessions reuse the
+environment while it is valid. Set `KEDI_NOTEBOOK_ENV_HOME` to move this
+environment store.
 
 The package action beside a selected host runtime lists installed distributions
 and installs one or more requirement strings into the managed environment.
@@ -4073,6 +4075,11 @@ browser mode embedded Python operations are bridged to one persistent Pyodide
 worker. In host mode they are bridged to one persistent worker launched by the
 managed environment's executable, so Python objects remain available to later
 cells without modifying the selected base interpreter.
+Python in either worker calls Kedi procedures as it does in a `.kedi` file. The
+procedure runs in the notebook server while the calling Python waits, so its
+arguments and result must cross the bridge as JSON values. A failed call raises
+an exception that Python can catch; if it is not handled, the cell reports the
+procedure's Kedi error.
 The bundled `filesystem` module uses Pyodide's temporary virtual filesystem in
 browser mode and the notebook working directory on disk in host mode.
 
@@ -4293,7 +4300,7 @@ $ kedi --idle
  /\_/\
 ( o.o )
  > ^ <
-Kedi 0.1.1 on darwin
+Kedi 0.1.2 on darwin
 Type "help" for interactive help, ":show" to inspect a value, ":multiline" for a multiline fragment, ":dump" to save, or ":exit" to leave.
 +++ [base: int] = `40`
 +++ @add_two() -> int:
@@ -4553,7 +4560,7 @@ kedi-terminal-bench manifest \
   --harbor-revision 389bd4f8ce796ef4a97de4b62675021e262c8e76 \
   --model codex/gpt-6-luna \
   --effort high \
-  --kedi-wheel dist/kedi-0.1.1-py3-none-any.whl \
+  --kedi-wheel dist/kedi-0.1.2-py3-none-any.whl \
   --timeout-multiplier 1 \
   --agent-timeout-multiplier 1 \
   --verifier-timeout-multiplier 1 \
@@ -4582,7 +4589,7 @@ prevents a different Kedi build from entering the official task container:
 
 ```bash
 kedi-terminal-bench run runs/pilot.json \
-  --kedi-wheel dist/kedi-0.1.1-py3-none-any.whl \
+  --kedi-wheel dist/kedi-0.1.2-py3-none-any.whl \
   --jobs-dir runs/jobs \
   --job-name pilot-1
 ```
