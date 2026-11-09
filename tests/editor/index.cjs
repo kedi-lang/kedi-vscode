@@ -54,6 +54,7 @@ async function runChecks() {
     assert.ok(restarted?.data?.length, 'semantic tokens after LSP restart');
     console.log('KEDI_EDITOR_SMOKE_PASS: semantic keywords, output, captures, hover, outline, completion, restart');
     await require('./debugger.cjs').run();
+    await require('./run.cjs').run();
 }
 
 exports.run = async function () {

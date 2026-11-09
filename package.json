@@ -174,8 +174,62 @@
         "command": "kedi.restartServer",
         "title": "Kedi: Restart Language Server",
         "category": "Kedi"
+      },
+      {
+        "command": "kedi.runFile",
+        "title": "Run Kedi File",
+        "category": "Kedi",
+        "icon": "$(play)"
+      },
+      {
+        "command": "kedi.debugFile",
+        "title": "Debug Kedi File",
+        "category": "Kedi",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "kedi.runTests",
+        "title": "Run Tests in File",
+        "category": "Kedi"
+      },
+      {
+        "command": "kedi.runEvals",
+        "title": "Run Evals in File",
+        "category": "Kedi"
       }
-    ]
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "kedi.runFile",
+          "when": "resourceLangId == kedi && resourceScheme == file",
+          "group": "navigation@0"
+        },
+        {
+          "command": "kedi.debugFile",
+          "when": "resourceLangId == kedi && resourceScheme == file",
+          "group": "navigation@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "kedi.runFile",
+          "when": "editorLangId == kedi"
+        },
+        {
+          "command": "kedi.debugFile",
+          "when": "editorLangId == kedi"
+        },
+        {
+          "command": "kedi.runTests",
+          "when": "editorLangId == kedi"
+        },
+        {
+          "command": "kedi.runEvals",
+          "when": "editorLangId == kedi"
+        }
+      ]
+    }
   },
   "dependencies": {
     "proper-lockfile": "4.1.2",

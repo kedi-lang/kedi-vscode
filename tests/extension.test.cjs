@@ -7,7 +7,7 @@ const { transformSync } = require("esbuild");
 
 function harness(config = {}, options = {}) {
     const launches = [], errors = [], commands = new Map();
-    let callback, configurationCallback, debugResolver, managedCalls = 0;
+    let callback, configurationCallback, debugResolver, runResolver, managedCalls = 0;
     const state = { host: "/host environment/bin/python" };
     const api = { environments: {
         onDidChangeActiveEnvironmentPath(fn) { callback = fn; return { dispose() {} }; },
@@ -30,6 +30,7 @@ function harness(config = {}, options = {}) {
     const embedded = { dispose() {}, setClientGetter() {} };
     const modules = {
         "./debugger": { registerDebugger(_context, resolvePython) { debugResolver = resolvePython; } },
+        "./run": { registerRunCommands(_context, resolvePython) { runResolver = resolvePython; } },
         vscode,
         "vscode-languageclient/node": {
             TransportKind: { stdio: 0 },
@@ -62,6 +63,7 @@ function harness(config = {}, options = {}) {
         changePython: () => callback(),
         changeConfig: () => configurationCallback({ affectsConfiguration: () => true }),
         debugPython: resource => debugResolver(resource),
+        runsWithDebugPython: () => runResolver === debugResolver,
     };
 }
 
@@ -136,6 +138,7 @@ test("debugging reuses managed Python and follows explicit interpreter changes",
     const config = {};
     const h = harness(config);
     await h.activate();
+    assert.equal(h.runsWithDebugPython(), true);
     assert.equal((await h.debugPython({ fsPath: "/project/main.kedi" })).python, "/shared/editor-venv/bin/python");
     assert.deepEqual(Array.from((await h.debugPython({})).args), ["-I"]);
     const managedCalls = h.managedCalls();
@@ -151,7 +154,7 @@ test("debugging reuses managed Python and follows explicit interpreter changes",
 test("debugging does not guess Python from an opaque LSP command", async () => {
     const h = harness({ "lsp.serverCommand": "custom-kedi-lsp" });
     await h.activate();
-    await assert.rejects(h.debugPython({}), /does not identify a debug Python/);
+    await assert.rejects(h.debugPython({}), /does not identify a Python to run Kedi programs/);
     assert.equal(h.managedCalls(), 0);
     await h.extension.deactivate();
 });

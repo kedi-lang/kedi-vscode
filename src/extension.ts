@@ -32,6 +32,7 @@ import {
 } from "./embeddedKediInPython";
 import { managedPython, selectPython } from "./runtime";
 import { registerDebugger } from "./debugger";
+import { registerRunCommands } from "./run";
 
 let client: LanguageClient | undefined;
 let embedded: EmbeddedPython | undefined;
@@ -48,16 +49,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     outputChannel = vscode.window.createOutputChannel("Kedi Language Server");
     context.subscriptions.push(outputChannel);
 
-    registerDebugger(context, async resource => {
+    // Running and debugging a file use the language server's Python.
+    const programPython = async (resource: vscode.Uri) => {
         const { explicitPath, usePythonExtension, serverCommand } = pythonSettings(resource);
         if (serverCommand && !explicitPath && !usePythonExtension) {
-            throw new Error("A custom Kedi language-server command does not identify a debug Python. Use Kedi: Select Python Interpreter or set kedi.lsp.pythonPath.");
+            throw new Error("A custom Kedi language-server command does not identify a Python to run Kedi programs. Use Kedi: Select Python Interpreter or set kedi.lsp.pythonPath.");
         }
         return {
             python: await resolvePython(context, usePythonExtension, explicitPath, resource),
             args: explicitPath || usePythonExtension ? [] : ["-I"],
         };
-    });
+    };
+    registerDebugger(context, programPython);
+    registerRunCommands(context, programPython);
 
     // Build the embedded-Python module first — the LSP middleware
     // closes over its public surface (range fetch + virtual-doc URI).

@@ -8,6 +8,9 @@ All notable changes to the Kedi VS Code extension are documented here.
 
 - Debug Kedi programs from the editor through the integrated Kedi debugger;
   the managed runtime installs `kedi-debugger`.
+- Run, test, evaluate and debug the current file from the editor title's run
+  menu and the Command Palette. `@test:` and `@eval:` blocks have code lenses
+  that run the file's tests or evaluations.
 - Highlight capability, workflow and conditional profile members, and
   highlight Kedi files without a running language server.
 - Show CodeMode preload diagnostics from the language server.

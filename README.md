@@ -39,7 +39,8 @@ code --new-window --user-data-dir /tmp/kedi-editor-test \
 
 The test checks semantic tokens, profile output, captures, hover, outline,
 completion, language-server restart, debugger stepping, variables, clean exit,
-and relaunch with changed source and `.env` values without making model calls.
+relaunch with changed source and `.env` values, the `@test:` code lens, a test run's
+exit status and Debug Kedi File, without making model calls.
 Set `debug.saveBeforeStart` to `none` in the test profile to avoid save prompts
 for the untitled language-server fixtures. To verify a
 packaged VSIX, use its installed directory as `extensionDevelopmentPath`.
@@ -126,6 +127,23 @@ the module's Python prelude, creating one when necessary. Suggestions whose edit
 cannot be safely projected to Kedi are omitted. At most 128 resolved suggestions
 are offered at once; continue typing to narrow the list. Python/Pylance must be
 enabled, and the selected Kedi server must support `kedi/pythonCompletions`.
+
+## Running
+
+The editor title's run menu has **Run Kedi File** and **Debug Kedi File** for a saved
+`.kedi` file. Each `@test:` and `@eval:` block shows a **Run tests** or **Run evals** code
+lens. The same commands are in the Command Palette:
+
+| Command | Runs |
+| --- | --- |
+| **Kedi: Run Kedi File** | `kedi <file>` |
+| **Kedi: Run Tests in File** | `kedi <file> --test` |
+| **Kedi: Run Evals in File** | `kedi <file> --eval` |
+| **Kedi: Debug Kedi File** | the Kedi debugger, without stopping on entry |
+
+`--test` and `--eval` run every block in the file. Runs use the language server's Python,
+start in the workspace folder, save the file first and require a trusted workspace. A new run
+replaces the previous run's terminal.
 
 ## Debugging
 
