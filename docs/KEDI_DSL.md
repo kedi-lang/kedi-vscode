@@ -321,6 +321,121 @@ Inside a template, both `<`...`>` and bare `` `...` `` evaluate Python and inser
 its string value. Bare backticks are useful when the expression contains characters
 such as `>` or `[]` that would otherwise need escaping in literal template text.
 
+### Media Input
+
+Images, audio, video and documents can be substituted into model prompts. Load them
+with the bundled `media` module:
+
+```kedi
+> import: media
+
+[cat_image] = <image(photos/cat.png)>
+[dog_image] = <image(photos/dog.png)>
+
+>> Compare <cat_image> and <dog_image>. Is <cat_image> the happier one? [answer: bool]
+>> Extract the total of the receipt in <image(photos/receipt.png)> as [total: float].
+```
+
+`> import: media` exports the loaders `image`, `audio`, `video` and `document` and the
+types `Media`, `Image`, `Audio`, `Video` and `Document`. A loader takes a path relative
+to the working directory, an `http(s)` URL or a `data:` URI. Paths follow the filesystem
+module's rules: with `KEDI_WORKSPACE_POLICY=strict` (the default) they cannot leave the
+working directory, and `.env` files are refused. A media value is limited to 20 MB.
+
+**What the model receives.** Every media value in a prompt becomes an attachment placed
+before the prompt text and introduced by a `name:` label; the text shows only the name.
+The first template above sends one user message:
+
+1. the text `cat_image:`, then the image;
+2. the text `dog_image:`, then the image;
+3. the template text, with `cat_image` and `dog_image` in place of the substitutions.
+
+The name is, in order: a name given in Python (`Image.from_path(path, name="cat")`),
+the binding name (a `list[Image]` binding `photos` gives `photos_1`, `photos_2`), or
+`image_1`, `audio_1`, ... for an unnamed value such as `<image(photos/receipt.png)>`.
+File names never reach the model. Within one prompt each content is attached once, and a
+second name for the same content renders the first name. The same rules apply to `>>`
+templates, `<<` raw invokes and typed captures, and `> if:` template conditions.
+
+| Kind | Formats | Reaches the model as |
+| --- | --- | --- |
+| `Image` | PNG, JPEG, GIF, WebP | label and image |
+| `Audio` | WAV, MP3, OGG, FLAC, AIFF, AAC | label and audio |
+| `Video` | MP4, MOV, WebM, MKV, FLV, MPEG, WMV, 3GP; YouTube URLs | label and video |
+| `Document` | PDF | label and document |
+| `Document` | UTF-8 text, Markdown, CSV, HTML, JSON, XML, YAML, TOML | delimited text |
+
+A text document reaches every model as text, in the format Pydantic AI uses for
+providers without text-file input:
+
+```text
+-----BEGIN FILE id="notes" type="text/markdown"-----
+...
+-----END FILE id="notes"-----
+```
+
+With artifacts enabled, a text document at or above the artifact threshold is stored as an
+artifact instead, and the model reads it with the artifact tools. Office files (docx, xlsx,
+pptx) are rejected: convert them to PDF or text.
+
+Provider support with the Pydantic AI and LangChain adapters:
+
+| Provider | Image | Text document | PDF | Audio | Video |
+| --- | --- | --- | --- | --- | --- |
+| OpenAI | yes | yes | yes | audio models; WAV and MP3 | no |
+| Anthropic | yes | yes | yes | no | no |
+| Google Gemini | yes | yes | yes | yes | yes, including YouTube URLs |
+| AWS Bedrock | yes | yes | yes | no | Nova models |
+
+Kedi fails before the model call when a known provider cannot take an attachment, for
+example video on OpenAI. With LangChain it also honors the model profile flags
+(`image_inputs`, `pdf_inputs`, `audio_inputs`, `video_inputs`). The other adapters
+(Claude Agent SDK, Codex, DSPy, WebGPU, ACP and A2A) do not accept media and fail before
+model I/O; the editor reports such prompts statically.
+
+URLs go to the provider as URLs when the model accepts them. Otherwise Kedi downloads them,
+over `http(s)` only, with private and cloud-metadata addresses blocked. YouTube URLs are
+never downloaded, and only Gemini reads them. `s3://` and `gs://` URIs pass through. Do not
+build media URLs from untrusted input.
+
+**Outside prompts.** A media value is a native value. `[cat_image] = <image(...)>`,
+`` [copy: Image] = `cat_image` ``, parameters typed `Image` and backtick arguments such as
+``<caption(`cat_image`)>`` keep it. Rendering media into text is an error, because the
+content would be lost: `[m] = See <cat_image>`, `[m] = <cat_image>`, `= <cat_image>`, a
+string argument such as `<caption(<cat_image>)>`, `> instructions:` and subagent tasks.
+`> show:` and Python `str()` display a byte-free label such as
+`<image cat.png · image/png · 48 KB>`. Media inside a dict, a model or a mixed list cannot
+be used in a prompt yet; substitute each media value directly.
+
+```kedi
+> import: media
+
+@caption(photo: Image) -> str:
+  [text] << Describe <photo> in one sentence.
+  = <text>
+
+[invoice: Image] = <image(`args.invoice`)>
+= <caption(`invoice`)>
+```
+
+A parameter typed `Image` also accepts a path, URL or data URI string and loads it with the
+same rules.
+
+**History.** With `> history: enabled`, an attachment that the replayed history already
+holds under the same name and content is not sent again; the prompt text still names it. A
+name that now holds different content is attached again. With a history processor, native
+compaction or history archiving, Kedi cannot tell what the model still sees and attaches
+media on every turn.
+
+**Python.** `kedi.media` provides the same types: `Image.from_path(path)`,
+`Image.from_url(url)`, `Image.from_bytes(data, "image/png")`,
+`Document.from_path(path, encoding="cp1254")` (re-encoded to UTF-8) and
+`Media.from_path(path)`, which picks the kind from the media type. Prompt substitutions also
+accept Pydantic AI `BinaryContent`, `ImageUrl`, `AudioUrl`, `VideoUrl`, `DocumentUrl` and
+`UploadedFile` objects and PIL images. Hooks see the attachments read-only in
+`UserPromptSubmitRequest.media` (name, kind, media type, size and SHA-256); an `edit`
+decision replaces only the prompt text.
+
 ### Outputs (L-values)
 
 Outputs are placeholders filled by the LLM using `[...]`:
