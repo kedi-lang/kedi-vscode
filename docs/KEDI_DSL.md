@@ -457,7 +457,9 @@ Outputs are placeholders filled by the LLM using `[...]`:
 >> [first_name] [last_name] lives in [city: str]
 ```
 
-Output names must be valid identifiers: `^[A-Za-z_][A-Za-z0-9_]*$`
+Output names must be valid identifiers: `^[A-Za-z_][A-Za-z0-9_]*$`. The model sees each
+output under its Kedi name, including names Pydantic reserves for itself such as `_draft`,
+`model_config` or `copy`.
 
 Backtick-wrapped type expressions in outputs are evaluated at runtime, giving you access to dynamic types from the prelude or computed values.
 
@@ -834,6 +836,10 @@ Procedure parameters can have single-line inline Python defaults:
 
 Required positional parameters must come before defaulted parameters, matching Python function semantics. Untyped parameters are `str` parameters, including when they have a default; a non-`str` default raises when the procedure uses it. Annotate the parameter when its default is another native type.
 
+Procedure names and parameter names cannot be Python keywords, because procedures
+are also exposed as Python callables. Unsupported names are rejected while parsing,
+with a diagnostic at the declaration. Underscore-prefixed parameter names remain legal.
+
 You can use either regular or backtick-wrapped type annotations for parameters and return types. They work interchangeably and provide the same type safety guarantees.
 
 ### Procedure Arguments
@@ -1041,7 +1047,10 @@ These are separate examples of return forms:
   end
 ```
 
-Whitespace is trimmed only at line ends, internal spaces preserved.
+Unescaped source whitespace is trimmed at expression boundaries; internal spaces,
+including gaps between adjacent substitutions, are preserved. Whitespace supplied by
+substituted values or explicit `\s`, `\t`, and `\n` escapes is not stripped. The same
+rules apply to rendered call arguments, typed string returns, and model prompts.
 
 ### Display Without Returning
 
@@ -1087,6 +1096,13 @@ return Person(name="Bob", age=25, email="bob@example.com")
 ````
 
 Fields without type annotations default to `str`. You can use backtick-wrapped type expressions in field definitions, parameters, returns, and variable initializations. The expressions are evaluated at runtime with access to prelude, globals, and local scope.
+
+Type names cannot be Python keywords. Field names cannot be Python keywords,
+start with an underscore, or name a Pydantic `BaseModel` member that starts with
+`model_` (such as `model_dump` or `model_config`): Pydantic treats underscore-prefixed
+names as private attributes rather than model fields, and the `model_` members are the
+model API. Kedi rejects these declarations during parsing instead of silently dropping
+fields. Fields named `self`, `instance` or `model_name` are supported.
 
 Kedi's built-in type namespace includes common Python and typing types such as `str`,
 `int`, `list`, `dict`, `Union`, `Optional`, `Literal`, `Annotated`, plus
