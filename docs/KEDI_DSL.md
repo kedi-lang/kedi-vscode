@@ -995,6 +995,13 @@ def helper(x):
 [data] = `np.array([1, 2, 3])`
 ````
 
+Prelude functions run when they are called and see the Kedi variables of the
+Python that calls them: `def doubled(): return scale * 2` reads the current
+`scale`, including a procedure's own variables when called from inside it. A
+`global scale` write in such a function is written back to the variable under
+its type contract when the calling Python finishes. A name the prelude defines
+itself wins over a Kedi variable of the same name inside prelude functions.
+
 ### Source-Relative Files
 
 File-backed programs expose their absolute source path as `__file__` in Python
@@ -4122,6 +4129,14 @@ with kedi.interactive() as session:
 `execute()` returns `None`; interactive root returns are forbidden. Use
 `> show:` for output and bindings for persistent values. Procedure returns
 retain their native type; display does not replace their return contract.
+
+A fragment that starts with a Python block runs in the session's Python
+namespace, where prelude functions live: its new names (imports, functions,
+other values) stay available to later fragments until the session closes. Its
+assignments to existing Kedi variables are written back under their type
+contracts, all or nothing: a value that does not match raises, and none of the
+fragment's assignments to Kedi variables apply. In a program file only a first
+block is a prelude; a later block keeps its new names local.
 
 Every fragment receives a distinct traceback identity such as
 `<interactive:1>`. Pass `source_name=` when an editor or notebook has a better
