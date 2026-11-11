@@ -1118,6 +1118,15 @@ such as `Annotated[str, "Exact URL pointing to the file"]` instead. Its
 description is included in the generated provider schema while its wire type
 remains `string`. Claude currently accepts all of the formats listed above.
 
+Type names in annotations always mean types. A value named like a type, such as
+`[str] = hello`, a parameter named `list` or a local `[int] = x`, does not change what
+`str`, `list` or `int` mean in an annotation; only a value that is itself a type
+(``[T: Any] = `int` ``) can stand in for one. Type arguments can be names, strings,
+numbers or `...`: `Literal[1, -2.5]`, `Annotated[int, 3]`, `Callable[..., int]`.
+A backtick type is Python and sees bindings as written. When it does not evaluate to
+a type, the error names the expression rather than reporting a mismatched value, and
+only a value that fails validation is reported as not matching its type.
+
 Native Kedi annotations reject `tuple`, `Tuple`, `Sequence`, `Mapping`,
 `Iterable`, `object`, `bytearray`, `slice`, and `range`. These names remain
 ordinary Python values inside Python expressions and blocks; the restriction
