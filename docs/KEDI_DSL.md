@@ -395,8 +395,8 @@ model I/O; the editor reports such prompts statically.
 
 Decision models read less. Jev (`typesafe/...`) reads images and text documents: images
 reach TypeSafe as image assets, and Kedi downloads image URLs first. TypeSafe image input
-is experimental, and the API rejects images it considers too small (64×64 fails, 512×512
-works). Laya reads text documents only. Kedi rejects any other attachment for them before the call.
+is experimental and takes PNG or JPEG images of 16 MiB at most, each side 280 to 1568
+pixels ([TypeSafe image limits](https://docs.typesafe.ai/images)); Kedi checks these before the call. Laya reads text documents only. Kedi rejects any other attachment for them before the call.
 
 URLs go to the provider as URLs when the model accepts them. Otherwise Kedi downloads them,
 over `http(s)` only, with private and cloud-metadata addresses blocked. YouTube URLs are
