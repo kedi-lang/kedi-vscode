@@ -393,6 +393,10 @@ example video on OpenAI. With LangChain it also honors the model profile flags
 (Claude Agent SDK, Codex, WebGPU, ACP and A2A) do not accept media and fail before
 model I/O; the editor reports such prompts statically.
 
+Decision models read less. Jev (`typesafe/...`) reads images and text documents: images
+reach TypeSafe as image assets, and Kedi downloads image URLs first. Laya reads text
+documents only. Kedi rejects any other attachment for them before the call.
+
 URLs go to the provider as URLs when the model accepts them. Otherwise Kedi downloads them,
 over `http(s)` only, with private and cloud-metadata addresses blocked. YouTube URLs are
 never downloaded, and only Gemini reads them. `s3://` and `gs://` URIs pass through. Do not
@@ -1663,7 +1667,7 @@ This language rename does not change the Python `system=` configuration API.
   > import: decisions
 
   > settings:
-    decision_threshold: 0.85
+    decision_boolean_threshold: 0.85
 
   >> The team for "Please refund my duplicate charge" is [team: Literal["billing", "technical"]].
   = <team>
@@ -1680,9 +1684,8 @@ This language rename does not change the Python `system=` configuration API.
   `> import: decisions` exports `Probability`, `Rubric`, `BooleanCriteria`, and
   `ChoiceCriteria`; it does not load weights or select a model. Python callers
   use `kedi.decisions`. Both providers share these types; only the selected
-  model and its settings change. Laya accepts `decision_threshold` (strict `probability > threshold`,
-  default `0.85`) and `decision_tool_call_threshold` (default `0.6`); Jev keeps
-  its existing `typesafe_threshold` and `typesafe_tool_call_threshold` settings.
+  model and its settings change. Both read `decision_boolean_threshold` (strict `probability > threshold`,
+  default `0.85`) and `decision_tool_call_threshold` (default `0.6`).
 
   For decision models, Kedi sends the template as context and asks for decisions
   based on each capture's question and criteria. It does not ask Jev or Laya to
