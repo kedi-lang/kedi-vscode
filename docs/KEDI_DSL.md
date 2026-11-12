@@ -390,7 +390,7 @@ Provider support with the Pydantic AI and LangChain adapters:
 Kedi fails before the model call when a known provider cannot take an attachment, for
 example video on OpenAI. With LangChain it also honors the model profile flags
 (`image_inputs`, `pdf_inputs`, `audio_inputs`, `video_inputs`). The other adapters
-(Claude Agent SDK, Codex, DSPy, WebGPU, ACP and A2A) do not accept media and fail before
+(Claude Agent SDK, Codex, WebGPU, ACP and A2A) do not accept media and fail before
 model I/O; the editor reports such prompts statically.
 
 URLs go to the provider as URLs when the model accepts them. Otherwise Kedi downloads them,
@@ -1535,7 +1535,7 @@ This language rename does not change the Python `system=` configuration API.
     > instructions: Be precise and cite the relevant tool output.
     > settings:
         parallel_tool_calls: true
-        num_retries: 2
+        timeout: 300
     > mcp:
         command: vsh
         args: `["run", "--mcp"]`
@@ -1556,7 +1556,8 @@ This language rename does not change the Python `system=` configuration API.
 
 - `> adapter: name` — select an agent framework adapter for following LLM
   calls in the current lexical scope. Built-in framework shortnames are
-  `pydantic`, `dspy`, and `langchain`.
+  `pydantic` and `langchain`. The former DSPy runtime adapter lives separately at
+  https://github.com/kedi-lang/dspy-adapter; GEPA still uses DSPy through `kedi[dspy]`.
 - `> agent: name` — select an agent harness adapter for following LLM calls
   in the current lexical scope. Built-in harness shortnames are `claude`,
   `codex`, `acp`, and `a2a`. ACP commands use a typed connection body:
@@ -1783,7 +1784,6 @@ This language rename does not change the Python `system=` configuration API.
   settings, including OpenAI defaults on the model, agent, or run. Leaving
   the scope restores the enclosing configuration; native defaults remain
   unchanged when no Kedi effort is selected.
-  DSPy receives the value directly as `reasoning_effort`.
 - `> approval: allow` / `> approval: deny` — configure tool-call approval for
   subsequent agent calls in the current scope. `allow` permits registered
   mutating or sensitive tools; `deny` refuses them. In the Python API, omitting
@@ -1904,7 +1904,7 @@ This language rename does not change the Python `system=` configuration API.
   scope. It does not remove handlers explicitly registered on an adapter
   instance. Hook support is event-specific: Pydantic AI, LangChain, Claude,
   Codex, and WebGPU support all four events; ACP supports only
-  `user_prompt_submit`; DSPy does not support this surface. Unsupported events
+  `user_prompt_submit`. Unsupported events
   fail before model transport and are reported by the LSP.
 - `> instructions: text` — set active agent instructions for subsequent procedure
   captures and prompt calls.
@@ -2123,8 +2123,8 @@ This language rename does not change the Python `system=` configuration API.
   parsed as simple scalars (`true`, `false`, numbers, `null`) and backtick
   expressions are evaluated as Python for complex values. Kedi keeps the merged
   settings in the active profile, then filters them at adapter boundaries:
-  Pydantic AI receives only supported `ModelSettings` keys, and DSPy receives
-  only supported `dspy.LM` kwargs. Agent harnesses receive their supported
+  Pydantic AI receives only supported `ModelSettings` keys, and LangChain receives
+  its supported model settings. Agent harnesses receive their supported
   settings, such as `cwd`, `env`, and `timeout` for ACP. `cwd` is passed as
   the agent process working directory where supported, including ACP, Codex,
   and Claude. Claude enables the Claude Code built-in tool and system prompt
@@ -2237,7 +2237,7 @@ This language rename does not change the Python `system=` configuration API.
   results.
 
   CodeMode is disabled by default. It supports Pydantic AI, LangChain, Claude
-  Agent SDK, and Codex App Server; DSPy remains unsupported. All four paths use
+  Agent SDK, and Codex App Server. All four paths use
   the same control names, Monty subset, limits, approval composition, and
   artifact boundary. CodeMode requires inline Kedi approval resolution because
   a deferred approval cannot safely suspend and replay a partially executed
@@ -2339,7 +2339,7 @@ application body and each of its retries counts once on both framework adapters.
 ### Subagents
 
 The subagent surface is available with the Pydantic AI, Claude Agent SDK,
-Codex App Server, LangChain, and DSPy adapters. A profile may expose other
+Codex App Server, and LangChain adapters. A profile may expose other
 profiles as direct children:
 
 ```kedi
@@ -2446,7 +2446,7 @@ captures, the child's `> output:` applies; without either schema, `output` is
 Task handles belong to one invocation. Unawaited work is cancelled and the
 invocation fails closed; a child failure, timeout, or schema error raises at
 await, including binderless await. Pydantic AI, LangChain, Claude, Codex, and
-A2A adapters support background tasks; DSPy's synchronous bridge does not.
+A2A adapters support background tasks.
 Python callers can use the same coordinator without model-generated delegation:
 
 ```python
@@ -2492,7 +2492,7 @@ Status is `queued`, `interrupt_requested`, or `rejected`. Admission is not proof
 of delivery or understanding. Finished tasks reject input rather than restarting.
 
 Pydantic AI (with native enqueue support), LangChain, Codex, and Claude support
-this input contract. A2A, ACP, and DSPy do not currently support live task input.
+this input contract. A2A and ACP do not currently support live task input.
 Interruption preserves native conversation state, completed tool results, and
 cumulative usage. It does not consume a new delegation slot or reset a deadline.
 The old attempt must stop before replacement work starts; non-quiescent tools
@@ -2694,8 +2694,6 @@ and cancellation is idempotent.
 
 Live background tasks are process-local and runtime-owned. Old terminal
 handles may expire after bounded retention.
-DSPy keeps blocking `delegate_task` only because its synchronous tool bridge
-does not guarantee that later lifecycle calls use the same event loop.
 
 Python callers may opt into restart persistence with
 `compile_program(..., subagent_state_path=...)` or
@@ -2744,9 +2742,6 @@ String fields can be plain Kedi strings or inline Python expressions:
   top-level directives are captured by following procedures, profile members
   are applied when the profile is used, and procedure-body directives affect
   following prompt calls in that procedure.
-
-DSPy currently uses the stdio MCP path through `dspy.Tool.from_mcp_tool` and
-`ReAct.acall`.
 
 ### `> use:` semantics
 
@@ -3216,7 +3211,6 @@ schemas. Stateful replay is a separate capability:
 | Claude Agent SDK | Yes | No | Yes |
 | Codex App Server | Yes | No | Yes |
 | LangChain | Yes | Yes | Yes |
-| DSPy | Yes | No | No |
 | WebGPU | Yes | No | No |
 | ACP | No | No | No |
 | A2A | No | No | Yes |
@@ -3338,8 +3332,8 @@ Rules:
 - `cache=True` enables response caching for identical source, arguments, and
   env. Parse caching is always keyed by the exact source hash.
 - `model=`, `adapter=`, and `agent=` override the configured backend only for
-  that callable. Use `adapter=` for frameworks (`pydantic`, `dspy`,
-  `langchain`) and `agent=` for harnesses (`claude`, `codex`, `acp`, `a2a`).
+  that callable. Use `adapter=` for frameworks (`pydantic`, `langchain`)
+  and `agent=` for harnesses (`claude`, `codex`, `acp`, `a2a`).
 - `requires=` on `query` and `bind` accepts canonical adapter capability names.
   Unknown names are rejected when the decorator is configured; unsupported
   capabilities fail before that callable performs model I/O.
@@ -4060,8 +4054,8 @@ The public event contract is:
   block provider or SDK reader threads indefinitely.
 
 Stream support is capability-driven. Pydantic AI, LangChain, Claude Agent SDK,
-Codex App Server, and ACP currently expose semantic events. DSPy and WebGPU do
-not yet provide trustworthy completed-message boundaries and advertise
+Codex App Server, and ACP currently expose semantic events. WebGPU does
+not yet provide trustworthy completed-message boundaries and advertises
 `supports_stream_events=False`. `LazyAdapter` reports the capability of the
 adapter it resolves.
 
@@ -4093,7 +4087,7 @@ with kedi.context(agent="codex", model="gpt-6.1-sol"):
     run_task()
 ```
 
-`adapter=` accepts agent frameworks (`pydantic`, `dspy`, `langchain`);
+`adapter=` accepts agent frameworks (`pydantic`, `langchain`);
 `agent=` accepts agent harnesses (`claude`, `codex`, `acp`). Passing both is an
 error. Adapter instances follow the same rule according to their `kind`
 metadata.
