@@ -288,8 +288,8 @@ output:
 The rendered prompt is sent unchanged, without field-filling rules, and the response
 schema is the capture type itself rather than an object with one property per field.
 The returned value is validated like a template output, and the binding keeps the
-declared type, so a later `:=` is validated against it. Artifact policy applies after
-validation, as it does to template outputs. A typed capture is a structured (`produce`)
+declared type, so a later `:=` is validated against it. Like every capture it stays the
+program's native value and is never stored as an artifact. A typed capture is a structured (`produce`)
 model call: the adapter must support structured output, and hooks and telemetry report
 it as structured. An untyped or `str` capture remains a text (`invoke`) call.
 
@@ -379,8 +379,8 @@ Does cat1 match the description in spec? Compare cat1 carefully.
   is a `<document>`: text as `text/plain`, numbers and booleans as their text, and lists,
   dicts and models as JSON (`application/json`). `None` and media nested inside a dict, a
   model or a mixed list are errors; reference each media value directly.
-- **Stored values.** A value that already is an artifact, such as a template output stored
-  under the artifact policy, goes as its reference: `<artifact id="log">` with the artifact
+- **Stored values.** A value that already is an artifact, which only an agent session creates
+  (for example from a large tool result), goes as its reference: `<artifact id="log">` with the artifact
   reference, and the model reads it with the artifact tools. When the call has no artifact
   tools, the value is opened and attached in full. Size never decides anything: plain values
   are attached in full however large they are, and `<log>` always writes the text itself,
@@ -3011,7 +3011,9 @@ The list replaces an inherited exclusion list; an empty list clears it. Duplicat
 names are normalized, and wildcard patterns are rejected. Exclusions do not
 disable approval, hooks, tracing, or the 100,000-byte inline tool-result limit.
 Oversized excluded results are rejected rather than inserted into model history.
-Generated output captures and existing artifact references are unchanged.
+Existing artifact references are unchanged. Output captures are never artifacts: artifacts
+are what an agent session creates for its own tool results, and a capture is the program's
+value.
 
 Pydantic AI and LangChain warn about exclusion names absent from the resolved
 tool catalog. This is a diagnostic, not a run failure. Validation uses MCP's
