@@ -45,6 +45,22 @@ test('templates retain capture and input scopes without LSP', () => {
     }
 });
 
+test('references highlight their names without LSP', () => {
+    const source = '>> Compare <<cat>> with <<image(<name>.png)>> [same: bool]';
+    const { tokens } = grammar.tokenizeLine(source, INITIAL);
+    const scoped = (word, scope) => tokens.some(t => source.slice(t.startIndex, t.endIndex) === word && t.scopes.includes(scope));
+    // References color exactly like substitutions.
+    const scopesOf = text => tokens.find(t => source.slice(t.startIndex, t.endIndex) === text).scopes;
+    assert.ok(scoped('image', 'entity.name.function.kedi'));
+    assert.ok(scoped('name', 'meta.interpolation.kedi'));
+    const plain = '>> Compare <cat>';
+    const plainCat = grammar.tokenizeLine(plain, INITIAL).tokens.find(t => plain.slice(t.startIndex, t.endIndex) === 'cat');
+    assert.deepEqual(plainCat.scopes, scopesOf('cat'));
+    const invoke = '[x] << Describe <<cat>>.';
+    const invokeTokens = grammar.tokenizeLine(invoke, INITIAL).tokens;
+    assert.ok(invokeTokens.every(t => invoke.slice(t.startIndex, t.endIndex) !== '<< Describe'));
+});
+
 test('comments and fenced Python do not become Kedi directives', () => {
     for (const first of ['###', '```python']) {
         const state = grammar.tokenizeLine(first, INITIAL).ruleStack;

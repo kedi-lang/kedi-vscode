@@ -63,6 +63,14 @@
           "patterns": [{ "include": "#python" }, { "include": "#types" }]
         },
         {
+          "begin": "<<(?=[A-Za-z_])", "end": ">>|$", "name": "meta.interpolation.kedi",
+          "patterns": [
+            { "include": "#segments" },
+            { "match": "[A-Za-z_][A-Za-z_0-9]*(?=\\s*\\()", "name": "entity.name.function.kedi" },
+            { "match": "[A-Za-z_][A-Za-z_0-9]*", "name": "variable.other.kedi" }
+          ]
+        },
+        {
           "begin": "(?<!<)(<)(?!<)", "end": ">|$", "name": "meta.interpolation.kedi",
           "patterns": [
             { "include": "#python" },

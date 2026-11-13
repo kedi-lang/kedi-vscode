@@ -298,7 +298,7 @@ want the model to fill named fields inside a template.
 
 ### Substitutions (R-values)
 
-Substitutions read values and insert them into templates using `<...>`:
+Substitutions insert text into templates using `<...>`:
 
 ```kedi
 # Variable substitution
@@ -318,22 +318,99 @@ Substitutions read values and insert them into templates using `<...>`:
 ```
 
 Inside a template, both `<`...`>` and bare `` `...` `` evaluate Python and insert
-its string value. Bare backticks are useful when the expression contains characters
+its text. Bare backticks are useful when the expression contains characters
 such as `>` or `[]` that would otherwise need escaping in literal template text.
 
-### Media Input
+**`<...>` always renders text.** A substitution accepts only `str`, `int`, `float`, `bool`
+and lists of these (checked item by item). Any other value is a type error, including
+`None`, media, dicts, models and clients: rendering it through its `repr` would be opaque,
+and could leak data such as an API key held by a client object. Convert explicitly when you
+want text (``<`str(value)`>``, ``<`report.title`>``), or pass the value by reference with
+`<<...>>` (below).
 
-Images, audio, video and documents can be substituted into model prompts. Load them
-with the bundled `media` module:
+A template is text wherever it appears. `[x] = <proc()>`, `= <proc()>` and an argument such
+as `<f(<g()>)>` all produce text. A native value comes from single-backtick Python only:
+
+```kedi
+[profile: Profile] = `get_profile("Ada")`   # the Profile value
+[summary] = <get_profile(Ada)>               # error: a Profile has no text form
+= <describe(`profile`)>                      # the argument is passed natively
+```
+
+Strings are never converted to other types implicitly: `[n: int] = <count>` is a type error
+(use `` [n: int] = `count` ``), and a string is never loaded as an image.
+
+### References (`<<...>>`)
+
+A model prompt passes a value **by reference** with `<<name>>` or `<<proc(...)>>`. The prompt
+text gets the value's ID, and the value itself is attached to the model's context under that
+ID:
 
 ```kedi
 > import: media
 
-[cat_image] = <image(photos/cat.png)>
-[dog_image] = <image(photos/dog.png)>
+[spec] = `read_text("spec.md")`
+[cat1: Image] = `image("cat.png")`
+>> Does <<cat1>> match the description in <<spec>>? Compare <<cat1>> carefully. [ok: bool]
+```
 
->> Compare <cat_image> and <dog_image>. Is <cat_image> the happier one? [answer: bool]
->> Extract the total of the receipt in <image(photos/receipt.png)> as [total: float].
+The model receives one user message: the attachments, then the prompt text.
+
+```text
+<attachments>
+<image id="cat1" type="image/png">
+[the image]
+</image>
+<document id="spec" type="text/plain">
+...contents of spec.md...
+</document>
+</attachments>
+Does cat1 match the description in spec? Compare cat1 carefully.
+```
+
+- **IDs.** A binding's ID is its name: `<<cat1>>` writes `cat1`. A procedure call gets a
+  temporary ID: `<<image(cat.png)>>` writes `image_result_1`, the next call in the same prompt
+  `image_result_2`. A name given in Python (`Image.from_path(path, name="cat")`) wins over
+  both. A list of media attaches each item: `<<cats>>` writes `cats_1, cats_2`.
+- **Once per prompt.** Every mention uses `<<...>>`; the content is attached once and later
+  mentions write only the ID. The same content under two names is attached once, and both
+  mentions show the first ID; a name reused for different content becomes `cat1_2`.
+- **What is attached.** Media go as native image, audio, video or PDF parts. Any other value
+  is a `<document>`: text as `text/plain`, numbers and booleans as their text, and lists,
+  dicts and models as JSON (`application/json`). `None` and media nested inside a dict, a
+  model or a mixed list are errors; reference each media value directly.
+- **Stored values.** A value that already is an artifact, such as a template output stored
+  under the artifact policy, goes as its reference: `<artifact id="log">` with the artifact
+  reference, and the model reads it with the artifact tools. When the call has no artifact
+  tools, the value is opened and attached in full. Size never decides anything: plain values
+  are attached in full however large they are, and `<log>` always writes the text itself,
+  never an artifact reference.
+- **File names** never reach the model. Attached content is not escaped: a document that
+  contains `</document>` can close its element early, so do not treat referenced content as
+  instructions.
+- **Where.** References are valid only in model prompts: `>>` templates (with or without
+  output fields), `[x] << ...` and `[x: T] << ...` raw invokes, and `> if:` / `> loop:`
+  template conditions, including those that run on decision models. Anywhere else, such as
+  an initialization, an assignment, a return, `> show:`, `> instructions:`, a subagent task
+  or a procedure argument, `<<...>>` is a parse error (`K-REFERENCE-CONTEXT`).
+
+`<cat1>` for an image is a type error, not an attachment: `<...>` always renders text.
+Whether a list of strings is written into the text (`<items>`) or attached as a JSON
+document (`<<items>>`) is your choice.
+
+### Media Input
+
+Load images, audio, video and documents with the bundled `media` module, and pass them to a
+model prompt by reference:
+
+```kedi
+> import: media
+
+[cat_image: Image] = `image("photos/cat.png")`
+[dog_image: Image] = `image("photos/dog.png")`
+
+>> Compare <<cat_image>> and <<dog_image>>. Is <<cat_image>> the happier one? [answer: bool]
+>> Extract the total of the receipt in <<image(photos/receipt.png)>> as [total: float].
 ```
 
 `> import: media` exports the loaders `image`, `audio`, `video` and `document` and the
@@ -342,41 +419,23 @@ to the working directory, an `http(s)` URL or a `data:` URI. Paths follow the fi
 module's rules: with `KEDI_WORKSPACE_POLICY=strict` (the default) they cannot leave the
 working directory, and `.env` files are refused. A media value is limited to 20 MB.
 
-**What the model receives.** Every media value in a prompt becomes an attachment placed
-before the prompt text and introduced by a `name:` label; the text shows only the name.
-The first template above sends one user message:
-
-1. the text `cat_image:`, then the image;
-2. the text `dog_image:`, then the image;
-3. the template text, with `cat_image` and `dog_image` in place of the substitutions.
-
-The name is, in order: a name given in Python (`Image.from_path(path, name="cat")`),
-the binding name (a `list[Image]` binding `photos` gives `photos_1`, `photos_2`), or
-`image_1`, `audio_1`, ... for an unnamed value such as `<image(photos/receipt.png)>`.
-File names never reach the model. Within one prompt each content is attached once, and a
-second name for the same content renders the first name. The same rules apply to `>>`
-templates, `<<` raw invokes and typed captures, and `> if:` template conditions.
+Loading is always explicit. A binding, parameter or capture typed `Image` accepts media
+values (and Pydantic AI or PIL equivalents) only; a string is never read as a path or URL.
+`` [photo: Image] = `image("cat.png")` `` loads the file, `[photo: Image] = cat.png` is a type
+error, and so is a call such as `<caption(cat.png)>` for a parameter typed `Image`.
 
 | Kind | Formats | Reaches the model as |
 | --- | --- | --- |
-| `Image` | PNG, JPEG, GIF, WebP | label and image |
-| `Audio` | WAV, MP3, OGG, FLAC, AIFF, AAC | label and audio |
-| `Video` | MP4, MOV, WebM, MKV, FLV, MPEG, WMV, 3GP; YouTube URLs | label and video |
-| `Document` | PDF | label and document |
-| `Document` | UTF-8 text, Markdown, CSV, HTML, JSON, XML, YAML, TOML | delimited text |
+| `Image` | PNG, JPEG, GIF, WebP | `<image>` with the image |
+| `Audio` | WAV, MP3, OGG, FLAC, AIFF, AAC | `<audio>` with the audio |
+| `Video` | MP4, MOV, WebM, MKV, FLV, MPEG, WMV, 3GP; YouTube URLs | `<video>` with the video |
+| `Document` | PDF | `<document>` with the PDF |
+| `Document` | UTF-8 text, Markdown, CSV, HTML, JSON, XML, YAML, TOML | `<document>` with the text |
 
-A text document reaches every model as text, in the format Pydantic AI uses for
-providers without text-file input:
-
-```text
------BEGIN FILE id="notes" type="text/markdown"-----
-...
------END FILE id="notes"-----
-```
-
-With artifacts enabled, a text document at or above the artifact threshold is stored as an
-artifact instead, and the model reads it with the artifact tools. Office files (docx, xlsx,
-pptx) are rejected: convert them to PDF or text.
+A text document reaches every model as text inside its `<document>` element, whatever its
+size: the program chose to attach it, and the artifact threshold never turns referenced
+content into an artifact. Office files (docx, xlsx, pptx) are rejected: convert them to PDF or
+text.
 
 Provider support with the Pydantic AI and LangChain adapters:
 
@@ -403,40 +462,32 @@ over `http(s)` only, with private and cloud-metadata addresses blocked. YouTube 
 never downloaded, and only Gemini reads them. `s3://` and `gs://` URIs pass through. Do not
 build media URLs from untrusted input.
 
-**Outside prompts.** A media value is a native value. `[cat_image] = <image(...)>`,
-`` [copy: Image] = `cat_image` ``, parameters typed `Image` and backtick arguments such as
-``<caption(`cat_image`)>`` keep it. Rendering media into text is an error, because the
-content would be lost: `[m] = See <cat_image>`, `[m] = <cat_image>`, `= <cat_image>`, a
-string argument such as `<caption(<cat_image>)>`, `> instructions:` and subagent tasks.
-`> show:` and Python `str()` display a byte-free label such as
-`<image cat.png · image/png · 48 KB>`. Media inside a dict, a model or a mixed list cannot
-be used in a prompt yet; substitute each media value directly.
+**Outside prompts.** A media value is a native value: keep it with single backticks
+(`` [copy: Image] = `cat_image` ``, ``<caption(`cat_image`)>``). `> show: `cat_image`` and
+Python `str()` display a byte-free label such as `<image cat.png · image/png · 48 KB>`.
 
 ```kedi
 > import: media
 
 @caption(photo: Image) -> str:
-  [text] << Describe <photo> in one sentence.
+  [text] << Describe <<photo>> in one sentence.
   = <text>
 
-[invoice: Image] = <image(`args.invoice`)>
+[invoice: Image] = `image(args.invoice)`
 = <caption(`invoice`)>
 ```
 
-A parameter typed `Image` also accepts a path, URL or data URI string and loads it with the
-same rules.
-
 **History.** With `> history: enabled`, an attachment that the replayed history already
-holds under the same name and content is not sent again; the prompt text still names it. A
-name that now holds different content is attached again. With a history processor, native
+holds under the same ID and content is not sent again; the prompt text still writes the ID.
+An ID that now holds different content is attached again. With a history processor, native
 compaction or history archiving, Kedi cannot tell what the model still sees and attaches
-media on every turn.
+references on every turn.
 
 **Python.** `kedi.media` provides the same types: `Image.from_path(path)`,
 `Image.from_url(url)`, `Image.from_bytes(data, "image/png")`,
 `Document.from_path(path, encoding="cp1254")` (re-encoded to UTF-8) and
-`Media.from_path(path)`, which picks the kind from the media type. Prompt substitutions also
-accept Pydantic AI `BinaryContent`, `ImageUrl`, `AudioUrl`, `VideoUrl`, `DocumentUrl` and
+`Media.from_path(path)`, which picks the kind from the media type. References also accept
+Pydantic AI `BinaryContent`, `ImageUrl`, `AudioUrl`, `VideoUrl`, `DocumentUrl` and
 `UploadedFile` objects and PIL images. Hooks see the attachments read-only in
 `UserPromptSubmitRequest.media` (name, kind, media type, size and SHA-256); an `edit`
 decision replaces only the prompt text.
@@ -851,7 +902,8 @@ You can use either regular or backtick-wrapped type annotations for parameters a
 
 Arguments can be passed as:
 1. **Native values** using single backticks: `` `expr` ``
-2. **Rendered strings** using any other format
+2. **Rendered strings** using any other format, including a sole `<g()>` or ``<`expr`>``,
+   which render text like every other substitution
 
 ```kedi
 @show(n: int, label: str):
