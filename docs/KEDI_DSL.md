@@ -2277,7 +2277,16 @@ This language rename does not change the Python `system=` configuration API.
   `search_tools`, `get_tool_schema`, and `execute_code`. Search returns only
   exact tool names and an opaque pagination cursor. Schema hydration makes
   selected tools callable inside a per-run Monty sandbox; only hydrated tools
-  may execute. The sandbox preserves Kedi argument validation, approval,
+  may execute. Each schema carries the tool's `callable_name`, the name sandbox
+  code calls: invalid characters become `_`, a leading digit gets a `_` prefix,
+  and a Python keyword or builtin name, or `asyncio`, gets a `_` suffix (`type`
+  becomes `type_`), so every tool stays reachable and builtins keep working.
+  Tool functions are async. A call whose coroutine is discarded or used as a
+  value without `await` (a bare statement, subscripted, iterated, tested,
+  formatted, or passed to a builtin) is rejected before any tool runs;
+  assigning the call or passing it to `asyncio.gather` leaves it to be awaited
+  later. A sandbox error about a coroutine adds the `await` hint and names the
+  tools that already ran in that snippet. The sandbox preserves Kedi argument validation, approval,
   required-tool tracking, tool telemetry, sequential constraints, and local
   MCP lifecycle behavior. Nested tool outputs remain outside model history
   while code filters or aggregates them. Only the final `execute_code` result
