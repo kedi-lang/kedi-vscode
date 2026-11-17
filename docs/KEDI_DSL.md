@@ -30,6 +30,10 @@ Command-line flags are available through the runtime-owned `args` binding (for e
 configure a different reserved name with `kedi.lang.compiler.environment.CLI_ARGS_IDENTIFIER`
 before compiling a program.
 
+`__debug__` and `__builtins__` cannot be Kedi names (`K-RESERVED-NAME`), wherever a name is
+declared or used: Python code always reads `__debug__` as `True`, and a `__builtins__` binding
+would replace the builtins of every Python expression. Python code itself may use both.
+
 After execution, `[capital]` is filled by the LLM (e.g., "Paris") and the variable `capital` becomes available in scope:
 ```kedi
 >> The capital of <country> is [capital].
