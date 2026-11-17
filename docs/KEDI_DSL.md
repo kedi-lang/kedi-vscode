@@ -402,7 +402,8 @@ Does cat1 match the description in spec? Compare cat1 carefully.
 - **What is attached.** Media go as native image, audio, video or PDF parts. Any other value
   is a `<document>` holding its text form, exactly the text `<value>` renders: scalars as
   `text/plain`, lists, tuples and dicts as JSON (`application/json`). References also accept
-  models, `~Type` values and dataclasses, as JSON. `None`, values without a text form (a set,
+  models, `~Type` values and dataclasses, written as JSON by their own schema; a set of two or
+  more items or a non-finite number inside one is an error that names the field. `None`, values without a text form (a set,
   for example) and media nested inside a dict, a model or a mixed list are errors; reference
   each media value directly.
 - **Stored values.** A value that already is an artifact, which only an agent session creates
@@ -1213,7 +1214,9 @@ remains `string`. Claude currently accepts all of the formats listed above.
 Type names in annotations always mean types. A value named like a type, such as
 `[str] = hello`, a parameter named `list` or a local `[int] = x`, does not change what
 `str`, `list` or `int` mean in an annotation; only a value that is itself a type
-(``[T: Any] = `int` ``) can stand in for one. Type arguments can be names, strings,
+(``[T: Any] = `int` ``) can stand in for one. In Python code the binding is what the
+name means, as for procedures: after `[Point] = x\=1`, `` `Point` `` is that text, never
+parsed into a `Point` model. Type arguments can be names, strings,
 numbers or `...`: `Literal[1, -2.5]`, `Annotated[int, 3]`, `Callable[..., int]`.
 A backtick type is Python and sees bindings as written. When it does not evaluate to
 a type, the error names the expression rather than reporting a mismatched value, and
