@@ -442,8 +442,8 @@ model prompt by reference:
 >> Extract the total of the receipt in <<image(photos/receipt.png)>> as [total: float].
 ```
 
-`> import: media` exports the loaders `image`, `audio`, `video` and `document` and the
-types `Media`, `Image`, `Audio`, `Video` and `Document`. A loader takes a path relative
+`> import: media` exports the loaders `image`, `audio`, `video` and `document`, `save` and
+the types `Media`, `Image`, `Audio`, `Video` and `Document`. A loader takes a path relative
 to the working directory, an `http(s)` URL or a `data:` URI. Paths follow the filesystem
 module's rules: with `KEDI_WORKSPACE_POLICY=strict` (the default) they cannot leave the
 working directory, and `.env` files are refused. A media value is limited to 20 MB.
@@ -494,6 +494,12 @@ build media URLs from untrusted input.
 **Outside prompts.** A media value is a native value: keep it with single backticks
 (`` [copy: Image] = `cat_image` ``, ``<caption(`cat_image`)>``). `> show: `cat_image`` and
 Python `str()` display a byte-free label such as `<image cat.png · image/png · 48 KB>`.
+``<save(`cat_image`, out/cat.png)>`` (or `photo.save("out/cat.png")` in Python) writes the
+value's bytes and returns the path, under the same rules as loading: relative to the working
+directory, inside it with `KEDI_WORKSPACE_POLICY=strict`, never a `.env` file. Parent
+directories are created and an existing file is replaced. A value held as a URL or an uploaded
+file has no bytes and cannot be saved. In Kedi Notebook (host mode), ``> show: `cat_image` ``
+displays the image, or an audio player for audio, instead of the label.
 
 ```kedi
 > import: media
