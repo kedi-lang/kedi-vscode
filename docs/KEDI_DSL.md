@@ -447,6 +447,11 @@ the types `Media`, `Image`, `Audio`, `Video` and `Document`. A loader takes a pa
 to the working directory, an `http(s)` URL or a `data:` URI. Paths follow the filesystem
 module's rules: with `KEDI_WORKSPACE_POLICY=strict` (the default) they cannot leave the
 working directory, and `.env` files are refused. A media value is limited to 20 MB.
+`media_limit` in `> settings:` lowers that for the requests in its scope on Pydantic AI and
+LangChain: `5MB`, `512KB` or a number of bytes (KB and MB are binary). A larger attachment
+fails before the request, naming it. The setting overrides `PydanticAdapter(media_limit=...)`
+and `LangChainAdapter(media_limit=...)`, is not sent to the model provider, and does not check
+values held as a URL or a provider file ID.
 
 Loading is always explicit. A binding, parameter or capture typed `Image` accepts media
 values (and Pydantic AI or PIL equivalents) only; a string is never read as a path or URL.
