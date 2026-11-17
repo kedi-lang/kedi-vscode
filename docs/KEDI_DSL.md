@@ -339,7 +339,9 @@ that comes from the value's data alone, in one canonical form, without running a
 | an `Enum` member | its value, by these rules |
 | `list`, `tuple`, `dict` with `str` keys | compact JSON, checked item by item: `["a",1]`, `{"k":[1,null]}` |
 
-`None` inside a container renders as `null`. Any other value is a type error that names the
+`None` inside a container renders as `null`, and a `Decimal`, date, time or `UUID` inside one is a
+JSON string (`["1.10"]`). `> show: <flag>` displays `true`; ``> show: `flag` `` displays the Python
+value itself, `True`. Any other value is a type error that names the
 offending part, for example `<order> renders text, but order["items"][2] is of type Client`:
 `None` itself, media, bytes, sets (no stable order: ``<`sorted(ids)`>``), paths
 (``<`str(path)`>``), `timedelta`, `complex`, NamedTuples, dict and list subclasses, models,
@@ -3359,6 +3361,13 @@ Agent tools require an adapter that supports tool registration (for example
 Pydantic AI). Adapters without tool support surface capability warnings in the
 LSP; harness adapters that cannot accept external tools may ignore registrations
 until their underlying protocol gains tool support.
+
+### Tool results
+
+A tool result that is not text reaches the model as JSON written by Pydantic, on every
+adapter: models and dataclasses by their schema, dates in ISO form, sets and tuples as lists,
+bytes as base64. A value without a JSON form, such as a client object, is a tool error; its
+`__str__` or `__repr__` never reaches the model.
 
 ### Tool approval and sensitive files
 
