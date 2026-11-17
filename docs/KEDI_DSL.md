@@ -1135,7 +1135,9 @@ These are separate examples of return forms:
 
 Unescaped source whitespace is trimmed at expression boundaries; internal spaces,
 including gaps between adjacent substitutions, are preserved. Whitespace supplied by
-substituted values or explicit `\s`, `\t`, and `\n` escapes is not stripped. The same
+substituted values or explicit `\s`, `\t`, and `\n` escapes is not stripped. A
+continuation collapses the source whitespace around its backslash to one space and keeps
+escaped whitespace next to it: `= a\s \` followed by `1` returns `a  1`. The same
 rules apply to rendered call arguments, typed string returns, and model prompts.
 
 ### Display Without Returning
