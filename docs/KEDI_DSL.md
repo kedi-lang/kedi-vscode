@@ -2892,6 +2892,12 @@ receives a fresh copy of the validated arguments, so mutations from a failed
 attempt do not leak into the next one. Only one `> tool:` declaration is
 allowed per procedure.
 
+When the last attempt raises `ValueError`, `LookupError` or `OSError` (a rejected
+argument, a missing record, a timeout), the calling model receives the exception's
+message as a tool error and can correct its arguments or continue without the result;
+the framework's tool retry limit and the run budget bound how often. Any other
+exception, such as `TypeError` or `RuntimeError`, ends the run.
+
 Single-line form:
 
 ```kedi
