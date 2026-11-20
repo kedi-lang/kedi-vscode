@@ -34,10 +34,18 @@ function runtimePaths(home = process.env.KEDI_HOME || path.join(os.homedir(), ".
     };
 }
 
+const BLOCKED_INSTALLATION_ENV_KEYS = new Set(["PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "CONDA_PREFIX", "UV_PROJECT_ENVIRONMENT", "UV_CONFIG_FILE", "UV_WORKING_DIR", "UV_VENV_CLEAR", "UV_VENV_SEED", "UV_SYSTEM_PYTHON", "UV_PYTHON", "UV_PYTHON_PREFERENCE"]);
+
 function installationEnv(home) {
     const env = { ...process.env };
     // Neither a workspace's Python search path nor an activated venv owns this runtime.
-    for (const key of ["PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "CONDA_PREFIX", "UV_PROJECT_ENVIRONMENT", "UV_CONFIG_FILE", "UV_WORKING_DIR", "UV_VENV_CLEAR", "UV_VENV_SEED", "UV_SYSTEM_PYTHON", "UV_PYTHON", "UV_PYTHON_PREFERENCE"]) delete env[key];
+    // Environment names are case-insensitive on Windows, so a mixed-case
+    // spelling (PythonPath, pythonhome, ...) names the same variable and
+    // must be removed too — deleting only the exact spelling leaks it
+    // into the uv/python child processes.
+    for (const key of Object.keys(env)) {
+        if (BLOCKED_INSTALLATION_ENV_KEYS.has(key.toUpperCase())) delete env[key];
+    }
     return {
         ...env, PYTHONNOUSERSITE: "1", UV_NO_CONFIG: "1", UV_NO_PROGRESS: "1",
         UV_PYTHON_INSTALL_DIR: path.join(home, "editor-python"),
