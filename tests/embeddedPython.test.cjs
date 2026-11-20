@@ -159,3 +159,27 @@ test("virtual locations are still mapped onto the .kedi file (audit #215 V1)", (
     assert.equal(mappedLinks[0].targetUri.toString(), sourceUri.toString());
     assert.ok(mappedLinks[0].targetRange.isEqual(new Range(10, 5, 10, 10)));
 });
+
+test("translatePosition keeps multi-line characters and never goes negative (audit #215 V2)", () => {
+    const { translatePosition } = loadEmbeddedPython(mockVscode());
+
+    // Verification repro (7,3): from (5,10)-(9,0), to (0,0)-(4,0).
+    // Old formula gave character 3 + 0 - 10 = -7 (RangeError).
+    const out = translatePosition(new Range(5, 10, 9, 0), new Range(0, 0, 4, 0), new Position(7, 3));
+    assert.equal(out.line, 2);
+    assert.equal(out.character, 3);
+
+    // Same-line positions still get the start offset.
+    const sameLine = translatePosition(new Range(5, 10, 5, 20), new Range(0, 0, 0, 10), new Position(5, 13));
+    assert.equal(sameLine.line, 0);
+    assert.equal(sameLine.character, 3);
+
+    // Last line of a multi-line range keeps its character.
+    const lastLine = translatePosition(new Range(5, 10, 9, 0), new Range(0, 0, 4, 0), new Position(9, 0));
+    assert.equal(lastLine.line, 4);
+    assert.equal(lastLine.character, 0);
+
+    // A same-line position left of the range start clamps to 0 instead of throwing.
+    const clamped = translatePosition(new Range(5, 10, 5, 20), new Range(0, 0, 0, 10), new Position(5, 5));
+    assert.equal(clamped.character, 0);
+});

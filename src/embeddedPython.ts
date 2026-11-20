@@ -111,9 +111,17 @@ export function translatePosition(
     toRange: vscode.Range,
     pos: vscode.Position
 ): vscode.Position {
+    // The start-character offset only applies on the range's first line.
+    // On later lines the character is carried over unchanged: applying
+    // the offset there could go negative (e.g. pos (7,3) in a range
+    // starting at (5,10) gave 3 + 0 - 10 = -7, a RangeError).
+    const character =
+        pos.line === fromRange.start.line
+            ? pos.character + toRange.start.character - fromRange.start.character
+            : pos.character;
     return new vscode.Position(
-        toRange.start.line + pos.line - fromRange.start.line,
-        pos.character + toRange.start.character - fromRange.start.character
+        Math.max(0, toRange.start.line + pos.line - fromRange.start.line),
+        Math.max(0, character)
     );
 }
 
