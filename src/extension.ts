@@ -37,6 +37,7 @@ import { registerRunCommands } from "./run";
 let client: LanguageClient | undefined;
 let embedded: EmbeddedPython | undefined;
 let embeddedKedi: EmbeddedKediInPython | undefined;
+let runCommands: vscode.Disposable | undefined;
 let pythonApi: any | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
 // The watcher handed to the language client as synchronize.fileEvents.
@@ -66,7 +67,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         };
     };
     registerDebugger(context, programPython);
-    registerRunCommands(context, programPython);
+    runCommands = registerRunCommands(context, programPython);
 
     // Build the embedded-Python module first — the LSP middleware
     // closes over its public surface (range fetch + virtual-doc URI).
@@ -128,6 +129,8 @@ export async function deactivate(): Promise<void> {
     }
     fileWatcher?.dispose();
     fileWatcher = undefined;
+    runCommands?.dispose();
+    runCommands = undefined;
     embedded?.dispose();
     embedded = undefined;
     embeddedKedi?.dispose();

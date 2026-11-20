@@ -35,7 +35,7 @@ function harness(config = {}, options = {}) {
     const embedded = { dispose() {}, setClientGetter() {} };
     const modules = {
         "./debugger": { registerDebugger(_context, resolvePython) { debugResolver = resolvePython; } },
-        "./run": { registerRunCommands(_context, resolvePython) { runResolver = resolvePython; } },
+        "./run": { registerRunCommands(_context, resolvePython) { runResolver = resolvePython; return { dispose() { state.runDisposed = true; } }; } },
         vscode,
         "vscode-languageclient/node": {
             TransportKind: { stdio: 0 },
@@ -64,6 +64,7 @@ function harness(config = {}, options = {}) {
     return {
         extension: module.exports, launches, errors, commands, state,
         watchers, liveWatchers: () => watchers.filter(watcher => !watcher.disposed),
+        runDisposed: () => state.runDisposed === true,
         managedCalls: () => managedCalls,
         activate: () => module.exports.activate({ subscriptions: [] }),
         changePython: () => callback(),
@@ -72,6 +73,14 @@ function harness(config = {}, options = {}) {
         runsWithDebugPython: () => runResolver === debugResolver,
     };
 }
+
+test("deactivate disposes the run terminal handle (audit #215 V7)", async () => {
+    const h = harness();
+    await h.activate();
+    assert.equal(h.runDisposed(), false);
+    await h.extension.deactivate();
+    assert.equal(h.runDisposed(), true);
+});
 
 test("language server restarts reuse a single file watcher (audit #215 V4)", async () => {
     const h = harness();
