@@ -39,6 +39,11 @@ let embedded: EmbeddedPython | undefined;
 let embeddedKedi: EmbeddedKediInPython | undefined;
 let pythonApi: any | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
+// The watcher handed to the language client as synchronize.fileEvents.
+// vscode-languageclient does not dispose a watcher it was given
+// (registerRaw only disposes its listeners), so the extension owns it
+// and must dispose it on every restart and on deactivate.
+let fileWatcher: vscode.FileSystemWatcher | undefined;
 
 let restartQueue: Promise<void> = Promise.resolve();
 let restartTimer: ReturnType<typeof setTimeout> | undefined;
@@ -121,6 +126,8 @@ export async function deactivate(): Promise<void> {
         await client.stop();
         client = undefined;
     }
+    fileWatcher?.dispose();
+    fileWatcher = undefined;
     embedded?.dispose();
     embedded = undefined;
     embeddedKedi?.dispose();
@@ -176,6 +183,11 @@ async function startClient(
     }
     if (disposed) return;
 
+    // A restart replaces the previous watcher: disposing here keeps
+    // exactly one live watcher no matter how often the server restarts.
+    fileWatcher?.dispose();
+    fileWatcher = vscode.workspace.createFileSystemWatcher("**/*.kedi");
+
     const clientOptions: LanguageClientOptions = {
         documentSelector: [
             { scheme: "file", language: "kedi" },
@@ -184,7 +196,7 @@ async function startClient(
         outputChannel,
         traceOutputChannel: outputChannel,
         synchronize: {
-            fileEvents: vscode.workspace.createFileSystemWatcher("**/*.kedi"),
+            fileEvents: fileWatcher,
             configurationSection: "kedi",
         },
         initializationOptions: {
