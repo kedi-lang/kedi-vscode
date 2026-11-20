@@ -40,7 +40,10 @@ export function completionEdits(items: vscode.CompletionItem[]): CompletionEdit[
 }
 
 export function mappedCompletions(items: vscode.CompletionItem[], edits: CompletionEdit[]): vscode.CompletionItem[] {
-    return edits.map(edit => {
+    if (!Array.isArray(edits)) {
+        return [];
+    }
+    return edits.filter((edit) => Number.isInteger(edit.index) && edit.index >= 0 && edit.index < items.length).map(edit => {
         const original = items[edit.index];
         const item = { ...original, command: undefined, textEdit: undefined };
         if (edit.textEdit) {

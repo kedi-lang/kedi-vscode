@@ -57,7 +57,7 @@ function loadEmbeddedPython(vscode) {
     const pythonCompletion = loadPythonCompletion(vscode);
     const module_ = { exports: {} };
     vm.runInNewContext(transformSync(fs.readFileSync(path.join(__dirname, "../src/embeddedPython.ts"), "utf8"), { loader: "ts", format: "cjs" }).code, {
-        module: module_, exports: module_.exports,
+        module: module_, exports: module_.exports, Buffer,
         require: (name) => {
             if (name === "vscode") return vscode;
             if (name === "./pythonCompletion") return pythonCompletion;
@@ -182,4 +182,58 @@ test("translatePosition keeps multi-line characters and never goes negative (aud
     // A same-line position left of the range start clamps to 0 instead of throwing.
     const clamped = translatePosition(new Range(5, 10, 5, 20), new Range(0, 0, 0, 10), new Position(5, 5));
     assert.equal(clamped.character, 0);
+});
+
+// --- forwardCompletion (audit #215 V3): a rejecting
+// `kedi/pythonCompletions` request must resolve to an empty list, not
+// reject the provider promise. The harness drives the real
+// registerEmbeddedPython with mocked vscode + a fake language client
+// whose pythonCompletions request either throws or answers.
+function completionHarness({ rejectCompletions }) {
+    const captured = {};
+    const vscode = mockVscode();
+    vscode.languages.registerCompletionItemProvider = (_lang, provider) => { captured.completion = provider; return { dispose() {} }; };
+    vscode.commands.executeCommand = async (cmd) => {
+        if (cmd === "vscode.executeCompletionItemProvider") {
+            return { items: [{ label: "foo", insertText: "foo" }, { label: "bar", insertText: "bar" }], isIncomplete: false };
+        }
+        throw new Error(`unexpected command ${cmd}`);
+    };
+    const embedded = loadEmbeddedPython(vscode);
+    const context = { subscriptions: [], storageUri: Uri.parse("file:///storage"), globalStorageUri: Uri.parse("file:///storage") };
+    const oneRange = { start: { line: 0, character: 0 }, end: { line: 0, character: 3 } };
+    const virtualDoc = {
+        text: "x = 1\n", focusKey: "global",
+        ranges: [{ kind: "fenced", sourceRange: oneRange, virtualRange: oneRange, text: "x=1" }],
+        mappings: [{ kind: "fenced", sourceRange: oneRange, virtualRange: oneRange }],
+        symbols: [],
+    };
+    const client = {
+        async sendRequest(method) {
+            if (method === "kedi/pythonVirtualDocument") return virtualDoc;
+            if (method === "kedi/pythonCompletions") {
+                if (rejectCompletions) throw new Error("Language server not running");
+                return [{ label: "foo", index: 0, additionalTextEdits: [] }];
+            }
+            throw new Error(`unexpected request ${method}`);
+        },
+    };
+    embedded.registerEmbeddedPython(context, () => client);
+    const doc = { uri: Uri.parse("file:///ws/main.kedi"), version: 1, languageId: "kedi", getText: () => "x=1" };
+    return { provider: captured.completion, doc, token: { isCancellationRequested: false } };
+}
+
+test("forwardCompletion returns an empty list when the pythonCompletions request rejects (audit #215 V3)", async () => {
+    const h = completionHarness({ rejectCompletions: true });
+    const list = await h.provider.provideCompletionItems(h.doc, new Position(0, 1), h.token, {});
+    assert.ok(list);
+    assert.equal(list.items.length, 0);
+    assert.equal(list.isIncomplete, false);
+});
+
+test("forwardCompletion still maps completions when the request succeeds (audit #215 V3)", async () => {
+    const h = completionHarness({ rejectCompletions: false });
+    const list = await h.provider.provideCompletionItems(h.doc, new Position(0, 1), h.token, {});
+    assert.equal(list.items.length, 1);
+    assert.equal(list.items[0].label, "foo");
 });

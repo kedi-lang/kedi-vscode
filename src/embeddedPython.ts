@@ -303,11 +303,19 @@ export function registerEmbeddedPython(
         );
         if (!list || token.isCancellationRequested || doc.version !== version) return undefined;
         const items = list.items.slice(0, limit);
-        const edits = await client.sendRequest<CompletionEdit[]>("kedi/pythonCompletions", {
-            textDocument: { uri: doc.uri.toString(), version }, text,
-            virtual: { text: focused.cached.virtualText, mappings: rawMappings(focused.cached.mappings) },
-            items: completionEdits(items),
-        }, token);
+        let edits: CompletionEdit[];
+        try {
+            edits = await client.sendRequest<CompletionEdit[]>("kedi/pythonCompletions", {
+                textDocument: { uri: doc.uri.toString(), version }, text,
+                virtual: { text: focused.cached.virtualText, mappings: rawMappings(focused.cached.mappings) },
+                items: completionEdits(items),
+            }, token);
+        } catch (error) {
+            // The language server is down or rejected the request: offer
+            // no completions instead of letting the provider reject.
+            console.error(`[kedi] pythonCompletions request failed: ${error}`);
+            return new vscode.CompletionList([], false);
+        }
         if (token.isCancellationRequested || doc.version !== version) return undefined;
         return new vscode.CompletionList(mappedCompletions(items, edits), list.isIncomplete || list.items.length > limit);
     };
