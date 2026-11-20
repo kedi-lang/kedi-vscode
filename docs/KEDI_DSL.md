@@ -489,7 +489,7 @@ model I/O; the editor reports such prompts statically.
 Decision models read less. Jev (`typesafe/...`) reads images and text documents: images
 reach TypeSafe as image assets, and Kedi downloads image URLs first. TypeSafe image input
 is experimental and takes PNG or JPEG images of 16 MiB at most, each side 280 to 1568
-pixels ([TypeSafe image limits](https://docs.typesafe.ai/images)); Kedi checks these before the call. Laya reads text documents only. Kedi rejects any other attachment for them before the call.
+pixels ([TypeSafe image limits](https://docs.typesafe.ai/images)); Kedi checks these before the call. Laya reads text documents; its engine checkpoint `laya/vega` (laya 0.5+, PyTorch) also reads one image, audio or video per decision, sent as data with the prompt text as context for each question. Kedi rejects any other attachment for them before the call.
 
 URLs go to the provider as URLs when the model accepts them. Otherwise Kedi downloads them,
 over `http(s)` only, with private and cloud-metadata addresses blocked. YouTube URLs are
@@ -1768,6 +1768,19 @@ This language rename does not change the Python `system=` configuration API.
 
   >> The team for "Please refund my duplicate charge" is [team: Literal["billing", "technical"]].
   = <team>
+  ```
+
+  `laya/vega` loads Laya's engine (laya 0.5+, PyTorch), the checkpoint that also
+  reads a prompt image, audio or video:
+
+  ```kedi
+  > adapter: pydantic
+  > model: laya/vega
+  > import: media
+
+  [photo: Image] = `image("ticket.png")`
+  [team: Literal["billing", "technical"]] << The team for the ticket in <<photo>> is?
+  = `team`
   ```
 
   A checkpoint may also be a local directory. Weights load once per model
