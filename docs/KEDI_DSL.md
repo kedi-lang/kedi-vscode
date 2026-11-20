@@ -2342,7 +2342,9 @@ This language rename does not change the Python `system=` configuration API.
   value without `await` (a bare statement, subscripted, iterated, tested,
   formatted, or passed to a builtin) is rejected before any tool runs;
   assigning the call or passing it to `asyncio.gather` leaves it to be awaited
-  later. A sandbox error about a coroutine adds the `await` hint and names the
+  later. Calls gathered this way overlap on every adapter: a synchronous tool
+  body runs in a worker thread, so it does not block the others, while tools
+  marked sequential still run one at a time. A sandbox error about a coroutine adds the `await` hint and names the
   tools that already ran in that snippet. The sandbox preserves Kedi argument validation, approval,
   required-tool tracking, tool telemetry, sequential constraints, and local
   MCP lifecycle behavior. Nested tool outputs remain outside model history
@@ -4528,8 +4530,10 @@ Portable mode rejects the following state rather than silently dropping it:
 - dynamic approval handlers, non-importable lifecycle hook handlers,
   process-bound tool/profile bindings, active artifacts, conversation turns,
   and adapter-native continuation state;
-- imports and inline Python preludes, because rebuilding them would rerun
-  module or Python initialization;
+- imports of user modules and inline Python preludes, because rebuilding them
+  would rerun module or Python initialization. Imports of Kedi's bundled
+  modules (`filesystem`, `media`, `decisions`, ...) are allowed: they are part
+  of Kedi, so the restored session replays them and binds their names again;
 - runtime-scoped procedure/type declarations and type defaults that require
   Python execution.
 
