@@ -3308,6 +3308,10 @@ loading data. Paths are confined to the configured root, symlink escapes are
 rejected, and payload/metadata writes are atomic.
 
 Every ref belongs to one artifact session. A different session cannot read it.
+Admitting the same content again from the same source while its artifact is
+active, for example the same variable in a later turn, returns the same ref with
+its original expiry instead of a new copy. A released or expired artifact, other
+sensitivity, or a derived artifact gets a new ref.
 Fixed TTL never moves; optional idle TTL is refreshed by successful access.
 Release is idempotent. A read already holding a lease may finish while release
 is pending, but later reads receive a precise released or expired error.
@@ -3834,7 +3838,11 @@ another turn: Pydantic AI through its output retries (one by default,
 `retries={"output": n}`), LangChain through `output_retries` (default `1`). Each
 correction is an actual model request, counted by `request_limit` and usage limits.
 A truncated response is reported as incomplete, not corrected; when corrections run
-out, the original validation error ends the run.
+out, the original validation error ends the run. When the rejected response also
+called business tools, those calls still run first on both adapters, and the
+correction follows with their results. A tool that returns an empty list reaches
+the model as the text `[]` on both adapters; the program and hooks still see the
+native value.
 
 Exact history archival is opt-in and requires an active artifact manager/policy:
 
