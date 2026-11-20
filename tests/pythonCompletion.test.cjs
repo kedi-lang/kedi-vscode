@@ -43,3 +43,23 @@ test("deprecated text edits and items without edits retain their insertion", () 
     assert.equal(mapped[0].textEdit, undefined);
     assert.equal(mapped[1].label, "lower");
 });
+
+test("out-of-range completion edit indexes are skipped, not dereferenced (audit #215 V3)", () => {
+    const items = [{ label: "foo", insertText: "foo" }, { label: "bar", insertText: "bar" }];
+    // Verification repro: index 5 with 2 items threw TypeError on
+    // `original.insertText`; a textEdit-less out-of-range index silently
+    // produced a broken item with its label/insertText lost.
+    const bad = [
+        { label: "zzz", index: 5, textEdit: { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 3 } }, newText: "zzz" }, additionalTextEdits: [] },
+        { label: "yyy", index: 99, additionalTextEdits: [] },
+        { label: "neg", index: -1, additionalTextEdits: [] },
+    ];
+    assert.equal(mappedCompletions(items, bad).length, 0);
+    assert.equal(mappedCompletions(items, null).length, 0);
+    // In-range edits still map.
+    const good = [{ label: "bar", index: 1, additionalTextEdits: [] }];
+    const mapped = mappedCompletions(items, good);
+    assert.equal(mapped.length, 1);
+    assert.equal(mapped[0].label, "bar");
+    assert.equal(mapped[0].insertText, "bar");
+});
