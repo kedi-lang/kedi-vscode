@@ -1388,6 +1388,18 @@ Nested procedures capture outer scope:
   = <inner()>
 ```
 
+A procedure or `~Type` defined inside `> if:`, `> loop:` or `> while:` belongs to
+the enclosing procedure, not to that block: it stays callable after the block and
+is removed when the procedure returns. At top level the enclosing scope is the
+program, so such definitions stay defined for the rest of the run. Each
+`> map:` iteration in a procedure keeps its own definitions; iterations whose
+body defines a procedure or type run one at a time instead of in parallel.
+
+Top-level `~Type` definitions are registered before the program runs, so a type
+can be used above its definition. Its field types therefore cannot refer to
+top-level variables; declare the type inside a procedure to build it from local
+values.
+
 ### Escaping Special Characters
 
 Use a backslash to escape special characters anywhere they would otherwise be interpreted by the DSL.
@@ -4805,7 +4817,10 @@ kedi.clear_cache()
 
 `cache_info()` returns the number of parse and response cache entries.
 `clear_cache()` clears both memory caches. Response caching is opt-in with
-`cache=True`; parse caching is always source-hash based.
+`cache=True`; parse caching is always source-hash based. Each cache keeps its
+256 most recently used entries. An argument compares by its `repr`, except one
+whose `repr` names an object by memory address: that call hits the cache only
+when it passes the same object again.
 
 ## Telemetry
 
