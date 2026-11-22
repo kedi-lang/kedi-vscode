@@ -1395,7 +1395,7 @@ Use a backslash to escape special characters anywhere they would otherwise be in
 Escapable characters:
 - `\<` → `<`
 - `\>` → `>`
-- `\[` → `]`?  // clarified below
+- `\[` → `[`
 - `\]` → `]`
 - `\=` → `=`
 - `\@` → `@`
@@ -1598,7 +1598,7 @@ captured tools remain visible, and the caller is unchanged. This applies across
 IDLE fragments and notebook cells too. A model left unbound still falls back to
 the invoking agent's model; that fallback does not import its instructions/tools.
 See the
-[capability guide](../kedi-docs/docs/agentic-engineering/capabilities.md) for ownership,
+[capability guide](https://docs.kedi-lang.org/agentic-engineering/capabilities/) for ownership,
 reset/reuse, exported bundles, deferral, and tracing, and
 [Python capability definitions](#python-capability-definitions) for the Python API.
 
@@ -1700,12 +1700,14 @@ This language rename does not change the Python `system=` configuration API.
   capability negotiation, Kedi may fetch an authenticated
   Agent Card first, then rejects unsupported requirements before sending a task.
   Requirement names come from the same registry:
-  `structured_output`, `tool_registration`, `mcp`,
-  `profile_override`, `model_override`, `effort`, `settings`, `codemode`,
-  `native_approvals`, `native_approval_handler`, `subagents`,
-  `background_subagents`, `artifacts`, `native_artifacts`,
-  `stateful_history`, `history_replay`, `history_processing`, `native_compaction`,
-  `stream_events`, `request_budget`, `tool_attempt_budget`, and `hooks`.
+  `capabilities`, `deferred_tools`, `structured_output`, `tool_registration`,
+  `mcp`, `profile_override`, `model_override`, `model_fallback`, `effort`,
+  `settings`, `codemode`, `native_approvals`, `native_approval_handler`,
+  `subagents`, `background_subagents`, `live_subagent_input`,
+  `subagent_interrupt`, `artifacts`, `native_artifacts`, `stateful_history`,
+  `history_replay`, `history_processing`, `native_compaction`,
+  `stream_events`, `request_budget`, `tool_attempt_budget`, `media_input`,
+  and `hooks`.
 - `> model: name` — set the active model for subsequent procedure captures (plain
   name or `` `expression` ``). With the Pydantic adapter, `codex/<model>` selects
   a Codex-authenticated Responses model on Python 3.11+ through the optional
@@ -2019,7 +2021,7 @@ This language rename does not change the Python `system=` configuration API.
   `> hooks: disabled` disables inherited lexical/profile handlers in that
   scope. It does not remove handlers explicitly registered on an adapter
   instance. Hook support is event-specific: Pydantic AI, LangChain, Claude,
-  Codex, and WebGPU support all four events; ACP supports only
+  Codex, and WebGPU support all five events; ACP and A2A support only
   `user_prompt_submit`. Unsupported events
   fail before model transport and are reported by the LSP.
 - `> instructions: text` — set active agent instructions for subsequent procedure
@@ -2236,7 +2238,7 @@ This language rename does not change the Python `system=` configuration API.
   intact.
 - `> settings:` — set active adapter/model configuration for subsequent procedure
   captures and prompt calls. Values are `name: value` lines; plain values are
-  parsed as simple scalars (`true`, `false`, numbers, `null`) and backtick
+  parsed as simple scalars (`true`, `false`, numbers) and backtick
   expressions are evaluated as Python for complex values. Kedi keeps the merged
   settings in the active profile, then filters them at adapter boundaries:
   Pydantic AI receives only supported `ModelSettings` keys, and LangChain receives
@@ -2650,14 +2652,6 @@ limit, and a model sees the rejection as its tool result. `> await [result]: job
 that statement and binds a `SubagentResult`. `> await: job` also blocks and
 propagates errors but creates no binding. Repeated awaits return the same
 result without starting another child. `SubagentResult` exposes `output`,
-All three schema sources (explicit `final_schema`, profile `> output:`, and task
-captures) support document-local JSON Pointer references such as
-`#/$defs/Person`. Kedi expands them before wrapping the child result, preserving
-nested model, list, union, and repeated-definition constraints without mutating
-the input schema. External references, `$id`, dynamic references, unresolved
-targets, and recursive expansion are rejected. The 32 KiB size and nesting-depth
-16 limits apply to both the source schema and its expanded form.
-
 `task_summary`, `run_id`, and `subagent` as attributes. Task captures define
 a validated result model with attribute-accessible fields; they do not bind
 names in the parent. Do not combine task captures with the child's `> output:`
@@ -3149,7 +3143,7 @@ Artifact fields and defaults:
 | --- | --- | --- |
 | `enabled` | `true` | Enables artifact conversion in the current agent scope. |
 | `query_artifacts` | `disabled` | Enables bounded lexical retrieval with the `query_artifact` tool. |
-| `exclude_tools` | `[]` | Exact exposed tool names exempt from automatic result conversion; inline size limits still apply. |
+| `exclude_tools` | `[]` | Exact exposed tool names exempt from automatic result conversion; inline size limits still apply. Lists require a backtick Python expression; a plain list is a parse error. |
 | `store` | `memory` | Uses the process-local `memory` store or the bounded `file` store. |
 | `path` | `.kedi/artifacts` | File-store root. It is ignored by the memory store. |
 | `threshold` | `100kb` | Minimum serialized byte size converted into an artifact. |
@@ -4719,7 +4713,7 @@ $ kedi --idle
  /\_/\
 ( o.o )
  > ^ <
-Kedi 0.1.4 on darwin
+Kedi 0.1.5 on darwin
 Type "help" for interactive help, ":show" to inspect a value, ":multiline" for a multiline fragment, ":dump" to save, or ":exit" to leave.
 +++ [base: int] = `40`
 +++ @add_two() -> int:
@@ -4979,7 +4973,7 @@ kedi-terminal-bench manifest \
   --harbor-revision 389bd4f8ce796ef4a97de4b62675021e262c8e76 \
   --model codex/gpt-6-luna \
   --effort high \
-  --kedi-wheel dist/kedi-0.1.4-py3-none-any.whl \
+  --kedi-wheel dist/kedi-0.1.5-py3-none-any.whl \
   --timeout-multiplier 1 \
   --agent-timeout-multiplier 1 \
   --verifier-timeout-multiplier 1 \
@@ -5008,7 +5002,7 @@ prevents a different Kedi build from entering the official task container:
 
 ```bash
 kedi-terminal-bench run runs/pilot.json \
-  --kedi-wheel dist/kedi-0.1.4-py3-none-any.whl \
+  --kedi-wheel dist/kedi-0.1.5-py3-none-any.whl \
   --jobs-dir runs/jobs \
   --job-name pilot-1
 ```
