@@ -728,8 +728,8 @@ Nested deterministic guards are supported; template-claim guards, executable
 statements, and `elif` are not configuration members.
 
 Both branches are parsed and checked against the enclosing bundle's rules.
-In particular, capabilities still cannot set `model`, `effort`, `settings`, or
-other caller-owned configuration, even in an unselected branch. Their selected
+In particular, capabilities still cannot set `model`, `fallback`, `effort`,
+`settings`, or other caller-owned configuration, even in an unselected branch. Their selected
 instructions remain additive and their approval/hooks remain tool-owned.
 An active path may not select both `agent` and `adapter`, or declare multiple
 `output` or `workflow` members in one profile. Mutually exclusive branches may
@@ -1568,7 +1568,7 @@ runtime contracts are not removed. Explicit reuse restores guidance once.
 
 Allowed capability-root members are `instructions`, `use`, `mcp`, `subagent`,
 `approval`, tool-lifecycle `hooks`, `requires`, and `defer`, plus the initial
-docstring. Model/effort/settings, adapter/agent, output, history/compaction,
+docstring. Model/fallback/effort/settings, adapter/agent, output, history/compaction,
 budgets, skills discovery, CodeMode policy, artifacts, and prompt-submit hooks
 are rejected. A capability cannot use a profile to bypass this boundary.
 Calling-agent reason and artifact policy remain authoritative.
@@ -1890,6 +1890,9 @@ This language rename does not change the Python `system=` configuration API.
   output binding with `:=` or Python removes the evidence from that current
   binding, because the new value was not produced by the recorded model call.
   This metadata is provenance, not automatic re-evaluation or a reactive value.
+- `> fallback: name` or a block of model IDs sets ordered alternatives without
+  replacing the effective primary. Pydantic AI and LangChain support it;
+  harnesses and capability bundles reject it. See [Model fallback](#model-fallback).
 - `> effort: level` — set active reasoning effort. Accepted values are
   `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; plain values or
   `` `expression` `` are allowed. Pydantic AI maps `max` to `xhigh`.
@@ -2437,6 +2440,69 @@ This language rename does not change the Python `system=` configuration API.
   runs. `> use:` tool registration and `> mcp:` servers remain capability
   warnings: when an adapter later advertises support for that feature, the same
   Kedi code stops warning without syntax changes.
+
+### Model fallback
+
+`> fallback:` supplies ordered alternatives to the effective primary model for
+Pydantic AI and LangChain. It is independent of `> model:`: the primary may come
+from an enclosing scope, an applied profile, Python configuration, or the
+environment. No immediately preceding model directive is required.
+
+```kedi
+> adapter: pydantic
+> model: openai:gpt-6-luna
+> fallback: openai:gpt-6.1-sol
+
+>> The capital of Turkey is [capital: str].
+= <capital>
+```
+
+Use a block for multiple alternatives, in attempt order:
+
+```kedi
+> fallback:
+    openai:gpt-6.1-sol
+    openai:gpt-6-luna
+```
+
+Entries are model IDs, not profiles, agents, or adapters. A whole backtick
+expression may return a nonempty model ID or a list/tuple of nonempty model IDs;
+block entries follow the same rule. Invalid computed values fail before model
+I/O rather than being coerced to strings. An unresolved primary is an error;
+the first alternative never becomes an implicit primary.
+
+Fallback declarations work at top level, inside procedures, and in profiles,
+including conditional profile members and subagent profiles. Each declaration
+replaces the effective list instead of appending. Procedures capture the list
+at their definition site; local overrides leave the caller unchanged. Changing
+`> model:` later changes only the primary, not the fallback list. Omitting the
+member inherits; ``> fallback: `[]` `` explicitly clears the chain. There is no
+generic `none`/null reset literal. Capabilities cannot own fallback selection,
+even through an unselected conditional member. Harness adapters and other
+unsupported adapters reject fallback configuration rather than ignoring it.
+
+Each candidate gets the active `request_retries` policy (two additional attempts
+by default) for HTTP 408, 429, and 5xx failures before advancing to the next
+candidate. An excessive `Retry-After` prevents another early attempt against that
+candidate; another configured candidate may still run within the shared limits.
+Authentication, refusals, argument/output validation, tool-body errors, budget
+exhaustion, and cancellation do not trigger fallback. Exhausting the chain
+propagates a terminal failure with attempt context, not an empty result.
+
+Every provider attempt must pass admission and spends the same request budget;
+usage limits and deadlines are shared. Changing models does not restart a
+template, agent, child, or program, replay completed tools or approvals, or consume
+another child-start slot. Only stream-opening failures can recover: partially
+delivered output is never replayed or combined with another model's stream.
+
+Model changes preserve portable history and completed tool results, not stale
+provider-specific response IDs, server conversation IDs, or incompatible cache
+settings. History-processor continuation resets remain in effect. Incompatible
+server-owned state, output/tool/media contracts, or explicit model settings must
+fail rather than silently degrade requirements. Selection is invocation-local
+and does not change concurrent calls' primary models. See
+[Model Request Retries](MODEL_REQUEST_RETRIES.md) for retry delays, SDK retry
+composition, admission, and native fallback integration.
 
 ### Run budgets
 
@@ -3825,6 +3891,27 @@ errors still propagate. Consuming a stream through `response.completed` keeps
 its completed response even when iteration stops on that event.
 
 ### Shared Framework Run Policies
+
+Both adapters accept `fallback_models=` as an ordered sequence of model IDs or
+framework-native model objects. The primary remains the normal `model` argument:
+
+```python
+from kedi.agent_adapter import LangChainAdapter, PydanticAdapter
+
+pydantic_adapter = PydanticAdapter(
+    "openai:gpt-6-luna", fallback_models=["openai:gpt-6.1-sol"], request_retries=2,
+)
+langchain_adapter = LangChainAdapter(
+    "openai:gpt-6-luna", fallback_models=["openai:gpt-6.1-sol"], request_retries=2,
+)
+```
+
+The shared profile field is `AgentProfile.fallback_models: tuple[str, ...] | None`:
+`None` leaves fallback selection inherited, a tuple replaces the list, and `()`
+clears it. Profile model IDs are strings; native objects belong in adapter
+construction, not this shared field. A scoped profile list overrides the adapter
+default without mutating its clients. Fallback uses the request-level policy
+described above; output and tool correction budgets remain independent.
 
 Both framework adapters accept `default_usage_limits=UsageLimits(...)` and
 `history_archive=HistoryArchiveSettings(...)`. Per-call `usage_limits` overrides

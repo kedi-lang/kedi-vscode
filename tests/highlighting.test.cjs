@@ -29,12 +29,23 @@ test('syntax fallback is bundled and does not require the language server', () =
 });
 
 test('all supported directive names highlight, including output and task controls', () => {
-    const words = 'agent adapter model effort approval hooks history skills codemode requires budget show tool instructions mcp settings artifacts output subagent max_agents workflow profile capability defer use package import export auto optimize case data test_data metric if else loop task await send interrupt task_group process map'.split(' ');
+    const words = 'agent adapter model fallback effort approval hooks history skills codemode requires budget show tool instructions mcp settings artifacts output subagent max_agents workflow profile capability defer use package import export auto optimize case data test_data metric if else loop task await send interrupt task_group process map'.split(' ');
     for (const word of words) {
         const source = `  > ${word}: value`;
         const { tokens } = grammar.tokenizeLine(source, INITIAL);
         assert.ok(tokens.some(t => source.slice(t.startIndex, t.endIndex) === word && t.scopes.includes('keyword.control.kedi')), word);
     }
+});
+
+test('fallback has exactly the same keyword scopes as model', () => {
+    const scopes = word => {
+        const source = `  > ${word}: openai:backup`;
+        return grammar.tokenizeLine(source, INITIAL).tokens.find(
+            token => source.slice(token.startIndex, token.endIndex) === word,
+        )?.scopes;
+    };
+    assert.ok(scopes('model').includes('keyword.control.kedi'));
+    assert.deepEqual(scopes('fallback'), scopes('model'));
 });
 
 test('templates retain capture and input scopes without LSP', () => {
