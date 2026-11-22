@@ -2319,6 +2319,8 @@ This language rename does not change the Python `system=` configuration API.
       max_hydrated_tools: 64
       max_nested_calls: 64
       max_concurrent_calls: 8
+      max_memory_bytes: 268435456
+      max_feed_seconds: 60
       request_timeout: 60
   ```
 
@@ -4642,9 +4644,11 @@ the restored object needs application-specific session behavior.
 Portable lifecycle hooks use module and qualified-name descriptors rather than
 pickle. Only importable top-level functions are restorable in that mode;
 lambdas, local functions, closures, bound methods, and handlers from `__main__`
-reject the portable dump. Load only trusted snapshots: resolving a hook imports
-its Python module and may run that module's ordinary import-time code, although
-the hook itself is not called.
+reject the portable dump. Restoring hook handlers requires `trusted=True`
+(`--trust-snapshot` in the CLI); without it, loading rejects the descriptors
+before importing their modules. Resolving a trusted hook may run its Python
+module's ordinary import-time code, although the hook itself is not called.
+Portable snapshots without hook handlers do not require trust.
 
 `dump()` also rejects an executing or closed session. Apart from resolving
 documented import-addressable hooks, loading never executes old top-level
