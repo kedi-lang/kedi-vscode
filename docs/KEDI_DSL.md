@@ -202,9 +202,25 @@ If a module has no export directive, importing it does not expose any names.
 
 ### Packages
 
+A package is described by `package.kedi`, a declarative manifest with exactly
+one `> package:` directive and no executable statements:
+
+```kedi
+> package: kedi_http:
+  version: 1.2.0
+  source: src/kedi_http
+  python: python@3.11-3.14
+  python_dependencies:
+    httpx>=0.27
+```
+
+The package name uses lowercase ASCII letters, digits and underscores, starts
+with a letter, and is the root module name importers use. `version` is an
+optional PEP 440 version.
+
 `source` is relative to `package.kedi` and must contain `main.kedi`. From the package root, run `kedi install` (or `kedi install path/to/package.kedi`) to copy the manifest and that source tree into `$HOME/.kedi/registry/<package-name>`. Imports resolve the package root to `main.kedi`, so `> import: kedi_http` loads `src/kedi_http/main.kedi`; `> import: kedi_http/client` loads `src/kedi_http/client.kedi`.
 
-The `python` field accepts only a fixed version (`python@3.11`) or an inclusive closed range (`python@3.11-3.14`). `python_dependencies` lists PEP 508 requirements. Both `kedi install` and `kedi add` install them into the interpreter running Kedi (`sys.executable`), using that interpreter's pip or `uv pip --python` when pip is unavailable. A dependency failure leaves the previous Kedi package in place. Python environment changes are managed by the Python installer and are not rolled back by Kedi. Importing a package or reading its manifest never installs dependencies.
+The `python` field accepts only a fixed version (`python@3.11`) or an inclusive closed range (`python@3.11-3.14`). `python_dependencies` lists PEP 508 requirements. Both `kedi install` and `kedi add` install them into the interpreter running Kedi (`sys.executable`), using that interpreter's pip or `uv pip --python` when pip is unavailable. A dependency failure leaves the previous Kedi package in place. Python environment changes are managed by the Python installer and are not rolled back by Kedi. Importing a package or reading its manifest never installs dependencies. Packages installed from the registry or a Git URL may not use direct references (`name @ https://...`) in `python_dependencies`; local packages may.
 
 `kedi add <package-name>` resolves `https://registry.kedi-lang.org/v1/package/<package-name>.json` and installs the active package at its exact registry-verified Git commit, not repository HEAD. Set `KEDI_REGISTRY_URL` to use another HTTPS registry or a loopback HTTP test server. `KEDI_REGISTRY_MOCK_ROOT` selects a local source-directory fixture instead of the HTTP registry; it is for development, not verified distribution. Package installation writes a Kedi-owned `.kedi-install.json` receipt with the source kind, manifest digest, repository and commit provenance. `kedi audit` checks installed receipts against the registry's commit-status index without importing package code; it reports yanked and revoked commits as actionable findings.
 
@@ -1388,6 +1404,17 @@ Nested procedures capture outer scope:
   = <inner()>
 ```
 
+A procedure or `~Type` defined inside `> if:` or `> loop:` belongs to
+the enclosing procedure, not to that block: it stays callable after the block and
+is removed when the procedure returns. At top level the enclosing scope is the
+program, so such definitions stay defined for the rest of the run. Define
+reusable procedures and types before starting concurrent `> map:` work.
+
+Top-level `~Type` definitions are registered before the program runs, so a type
+can be used above its definition. Its field types therefore cannot refer to
+top-level variables; declare the type inside a procedure to build it from local
+values.
+
 ### Escaping Special Characters
 
 Use a backslash to escape special characters anywhere they would otherwise be interpreted by the DSL.
@@ -1700,14 +1727,20 @@ This language rename does not change the Python `system=` configuration API.
   capability negotiation, Kedi may fetch an authenticated
   Agent Card first, then rejects unsupported requirements before sending a task.
   Requirement names come from the same registry:
-  `capabilities`, `deferred_tools`, `structured_output`, `tool_registration`,
-  `mcp`, `profile_override`, `model_override`, `model_fallback`, `effort`,
-  `settings`, `codemode`, `native_approvals`, `native_approval_handler`,
-  `subagents`, `background_subagents`, `live_subagent_input`,
-  `subagent_interrupt`, `artifacts`, `native_artifacts`, `stateful_history`,
-  `history_replay`, `history_processing`, `native_compaction`,
-  `stream_events`, `request_budget`, `tool_attempt_budget`, `media_input`,
-  and `hooks`.
+  `structured_output`, `tool_registration`, `mcp`,
+  `profile_override`, `model_override`, `model_fallback`, `effort`, `settings`, `codemode`,
+  `native_approvals`, `native_approval_handler`, `subagents`,
+  `background_subagents`, `artifacts`, `native_artifacts`,
+  `stateful_history`, `history_replay`, `history_processing`, `native_compaction`,
+  `stream_events`, `request_budget`, `tool_attempt_budget`, `hooks`, and:
+
+  | Requirement | Meaning | Adapters that provide it |
+  |---|---|---|
+  | `capabilities` | applies `> capability:` definitions | Pydantic AI, LangChain |
+  | `deferred_tools` | loads capabilities with `defer: true` on demand | Pydantic AI |
+  | `live_subagent_input` | a parent sends messages to a running subagent | Pydantic AI, LangChain, Claude, Codex; ACP and A2A depend on the agent |
+  | `subagent_interrupt` | a parent interrupts a running subagent | Pydantic AI, LangChain, Claude, Codex; ACP and A2A depend on the agent |
+  | `media_input` | images, audio, video and documents in the prompt | Pydantic AI, LangChain |
 - `> model: name` — set the active model for subsequent procedure captures (plain
   name or `` `expression` ``). With the Pydantic adapter, `codex/<model>` selects
   a Codex-authenticated Responses model on Python 3.11+ through the optional
@@ -2255,6 +2288,18 @@ This language rename does not change the Python `system=` configuration API.
   settings; its default sandbox is `workspace-write` so read/write harness tools
   are eligible unless narrowed by settings. Unknown setting names are parser/LSP
   errors.
+
+  Accepted setting names per adapter (from `kedi.agent_profile.settings`):
+
+  | Adapter | Settings |
+  |---|---|
+  | Kedi (every adapter) | `context_limit`, `media_limit`, `tool_reason` |
+  | Pydantic AI | `decision_boolean_threshold`, `decision_tool_call_threshold`, `extra_body`, `extra_headers`, `frequency_penalty`, `logit_bias`, `max_tokens`, `parallel_tool_calls`, `presence_penalty`, `response_cache`, `response_cache_ttl`, `seed`, `service_tier`, `stop_sequences`, `temperature`, `thinking`, `timeout`, `tool_choice`, `top_p` |
+  | LangChain | `api_key`, `base_url`, `callbacks`, `configurable_fields`, `configurable_prefix`, `decision_boolean_threshold`, `decision_tool_call_threshold`, `disable_streaming`, `extra_body`, `extra_headers`, `frequency_penalty`, `logit_bias`, `max_retries`, `max_tokens`, `metadata`, `model_kwargs`, `organization`, `parallel_tool_calls`, `presence_penalty`, `rate_limiter`, `reasoning`, `reasoning_effort`, `response_cache`, `response_cache_ttl`, `seed`, `stop`, `stop_sequences`, `stream_usage`, `streaming`, `tags`, `temperature`, `timeout`, `tool_choice`, `top_p` |
+  | Claude | `allowed_tools`, `cwd`, `disallowed_tools`, `env`, `fallback_model`, `max_budget_usd`, `max_turns`, `permission_mode`, `tools` |
+  | Codex | `approval_policy`, `config`, `cwd`, `model_provider`, `personality`, `sandbox`, `service_tier`, `summary`, `timeout` |
+  | ACP | `cwd`, `env`, `timeout` |
+
   `tool_reason` is a Kedi-owned approval setting for Pydantic AI and LangChain,
   accepting `enabled`, `disabled`, or a backtick Python boolean expression:
 
@@ -3119,7 +3164,8 @@ model request of an enabled profile carries the artifact tools and their
 instructions, whether or not any value is ever large, so the prompt prefix stays
 stable for caching. That costs on the order of a thousand input tokens per
 request. A profile that never produces large values, for example a short-lived
-subagent that reads small files, can drop it with `> artifacts: enabled: false`.
+subagent that reads small files, can drop it with an `> artifacts:` block whose
+only entry is `enabled: false`.
 Keep it enabled wherever a tool may return a large result, because a disabled
 profile sends that result to the model in full.
 
@@ -4620,6 +4666,12 @@ Portable mode rejects the following state rather than silently dropping it:
 - runtime-scoped procedure/type declarations and type defaults that require
   Python execution.
 
+Importable lifecycle hook handlers are stored by module and qualified name.
+Restoring one imports its module, which runs that module's import-time code, so
+a portable snapshot with hook handlers loads only with
+`kedi.load_session(..., trusted=True)` or `kedi --idle --load PATH
+--trust-snapshot`; without trust, loading stops before importing anything.
+
 Adapters and executors are infrastructure rather than serialized state. Pass
 them explicitly when restoring a snapshot that needs them:
 
@@ -4713,7 +4765,7 @@ $ kedi --idle
  /\_/\
 ( o.o )
  > ^ <
-Kedi 0.1.5 on darwin
+Kedi <version> on darwin
 Type "help" for interactive help, ":show" to inspect a value, ":multiline" for a multiline fragment, ":dump" to save, or ":exit" to leave.
 +++ [base: int] = `40`
 +++ @add_two() -> int:
@@ -4890,7 +4942,12 @@ kedi.clear_cache()
 
 `cache_info()` returns the number of parse and response cache entries.
 `clear_cache()` clears both memory caches. Response caching is opt-in with
-`cache=True`; parse caching is always source-hash based.
+`cache=True`; parse caching is always source-hash based. Each cache retains at
+most 1,024 entries and evicts the oldest inserted entry when full. Response
+keys include argument values, container contents, and instance attributes or
+slots, including container-subclass state. Objects without readable instance
+state use process-local identity tokens. Cached results are copied where
+possible so one caller cannot mutate another caller's cached value.
 
 ## Telemetry
 
@@ -4973,7 +5030,7 @@ kedi-terminal-bench manifest \
   --harbor-revision 389bd4f8ce796ef4a97de4b62675021e262c8e76 \
   --model codex/gpt-6-luna \
   --effort high \
-  --kedi-wheel dist/kedi-0.1.5-py3-none-any.whl \
+  --kedi-wheel dist/kedi-<version>-py3-none-any.whl \
   --timeout-multiplier 1 \
   --agent-timeout-multiplier 1 \
   --verifier-timeout-multiplier 1 \
@@ -5002,7 +5059,7 @@ prevents a different Kedi build from entering the official task container:
 
 ```bash
 kedi-terminal-bench run runs/pilot.json \
-  --kedi-wheel dist/kedi-0.1.5-py3-none-any.whl \
+  --kedi-wheel dist/kedi-<version>-py3-none-any.whl \
   --jobs-dir runs/jobs \
   --job-name pilot-1
 ```
@@ -5127,6 +5184,13 @@ justify enabling them.
 This integration defines the execution and evidence surface only. It does not
 embed task solutions, report a Terminal-Bench score, or make an unofficial run
 leaderboard-comparable.
+
+## Command-Line and Environment Reference
+
+Every `kedi` flag and subcommand is listed in the
+[CLI reference](https://docs.kedi-lang.org/reference/cli/), and every
+`KEDI_*` variable in the
+[environment variable reference](https://docs.kedi-lang.org/reference/environment-variables/).
 
 ## Command-Line Parse Helpers
 

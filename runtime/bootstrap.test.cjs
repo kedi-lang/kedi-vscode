@@ -53,6 +53,29 @@ test("installation does not inherit the workspace Python environment", () => {
     }
 });
 
+test("installationEnv removes blocked variables regardless of case (audit #215 V6)", () => {
+    // Verification repro: on Windows these spellings name the same
+    // variables as the exact-case ones, so they leaked into uv/python.
+    const prior = { PythonPath: process.env.PythonPath, pythonhome: process.env.pythonhome, uv_python: process.env.uv_python, PYTHONPATH_EXTRA: process.env.PYTHONPATH_EXTRA };
+    process.env.PythonPath = "C:\\evil\\site-packages";
+    process.env.pythonhome = "C:\\evil\\python";
+    process.env.uv_python = "C:\\evil\\python.exe";
+    process.env.PYTHONPATH_EXTRA = "keep-me";
+    try {
+        const env = installationEnv(os.tmpdir());
+        assert.equal(env.PythonPath, undefined);
+        assert.equal(env.pythonhome, undefined);
+        assert.equal(env.uv_python, undefined);
+        assert.equal(env.PYTHONPATH_EXTRA, "keep-me");
+        assert.equal(process.env.PythonPath, "C:\\evil\\site-packages");
+    } finally {
+        for (const [key, value] of Object.entries(prior)) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+    }
+});
+
 test("first setup pins packages, imports before receipt, then reuses offline", async t => {
     const dir = await home(t);
     const calls = [];

@@ -27,8 +27,33 @@ async function savedKediFile(resource: vscode.Uri | undefined): Promise<vscode.U
 class ValidationBlockLenses implements vscode.CodeLensProvider {
     provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
         const lenses: vscode.CodeLens[] = [];
+        // A @test:/@eval: line only counts at the top level: lines inside
+        // a ### block comment or a fenced ```python``` block are not
+        // validation blocks. Fences are alone on their lines, optionally
+        // after an assignment prefix (`= ``` `, `[x] = ``` `).
+        let inBlockComment = false;
+        let inFence = false;
         for (let line = 0; line < document.lineCount; line++) {
-            const mode = VALIDATION_BLOCK.exec(document.lineAt(line).text)?.[1];
+            const text = document.lineAt(line).text;
+            const trimmed = text.trim();
+            if (inFence) {
+                if (trimmed.includes("```")) {
+                    inFence = false;
+                }
+                continue;
+            }
+            if (trimmed === "###") {
+                inBlockComment = !inBlockComment;
+                continue;
+            }
+            if (inBlockComment) {
+                continue;
+            }
+            if (trimmed.includes("```")) {
+                inFence = true;
+                continue;
+            }
+            const mode = VALIDATION_BLOCK.exec(text)?.[1];
             if (mode !== "test" && mode !== "eval") continue;
             lenses.push(new vscode.CodeLens(new vscode.Range(line, 0, line, 0), {
                 title: mode === "test" ? "$(play) Run tests" : "$(play) Run evals",
@@ -42,14 +67,18 @@ class ValidationBlockLenses implements vscode.CodeLensProvider {
 }
 
 /** Run, test, evaluate and debug the current file with the language server's Python. */
-export function registerRunCommands(context: vscode.ExtensionContext, resolvePython: PythonResolver): void {
+export function registerRunCommands(context: vscode.ExtensionContext, resolvePython: PythonResolver): vscode.Disposable {
     let terminal: vscode.Terminal | undefined;
+    const disposeTerminal = (): void => {
+        terminal?.dispose();
+        terminal = undefined;
+    };
     const run = (mode: Mode) => async (resource?: vscode.Uri): Promise<void> => {
         try {
             const file = await savedKediFile(resource);
             const { python, args } = await resolvePython(file);
             // One run at a time: a new run replaces the previous one's terminal.
-            terminal?.dispose();
+            disposeTerminal();
             terminal = vscode.window.createTerminal({
                 name: `${TITLES[mode]}: ${path.basename(file.fsPath)}`,
                 shellPath: python,
@@ -84,4 +113,9 @@ export function registerRunCommands(context: vscode.ExtensionContext, resolvePyt
         vscode.commands.registerCommand("kedi.debugFile", debug),
         vscode.languages.registerCodeLensProvider({ language: "kedi", scheme: "file" }, new ValidationBlockLenses()),
     );
+    // Disposing the run commands also disposes the run terminal, so
+    // deactivation does not leave it behind.
+    const handle: vscode.Disposable = { dispose: disposeTerminal };
+    context.subscriptions.push(handle);
+    return handle;
 }

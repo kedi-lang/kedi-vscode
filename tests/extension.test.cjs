@@ -7,6 +7,7 @@ const { transformSync } = require("esbuild");
 
 function harness(config = {}, options = {}) {
     const launches = [], errors = [], commands = new Map();
+    const watchers = [];
     let callback, configurationCallback, debugResolver, runResolver, managedCalls = 0;
     const state = { host: "/host environment/bin/python" };
     const api = { environments: {
@@ -21,7 +22,11 @@ function harness(config = {}, options = {}) {
         },
         workspace: {
             getConfiguration() { return { get: (key, fallback) => config[key] === undefined ? fallback : config[key] }; },
-            createFileSystemWatcher() { return { dispose() {} }; },
+            createFileSystemWatcher() {
+                const watcher = { disposed: false, dispose() { this.disposed = true; } };
+                watchers.push(watcher);
+                return watcher;
+            },
             onDidChangeConfiguration(fn) { configurationCallback = fn; return { dispose() {} }; },
         },
         extensions: { getExtension() { return options.noPythonExtension ? undefined : { isActive: true, exports: api }; } },
@@ -30,7 +35,7 @@ function harness(config = {}, options = {}) {
     const embedded = { dispose() {}, setClientGetter() {} };
     const modules = {
         "./debugger": { registerDebugger(_context, resolvePython) { debugResolver = resolvePython; } },
-        "./run": { registerRunCommands(_context, resolvePython) { runResolver = resolvePython; } },
+        "./run": { registerRunCommands(_context, resolvePython) { runResolver = resolvePython; return { dispose() { state.runDisposed = true; } }; } },
         vscode,
         "vscode-languageclient/node": {
             TransportKind: { stdio: 0 },
@@ -58,6 +63,8 @@ function harness(config = {}, options = {}) {
     });
     return {
         extension: module.exports, launches, errors, commands, state,
+        watchers, liveWatchers: () => watchers.filter(watcher => !watcher.disposed),
+        runDisposed: () => state.runDisposed === true,
         managedCalls: () => managedCalls,
         activate: () => module.exports.activate({ subscriptions: [] }),
         changePython: () => callback(),
@@ -66,6 +73,29 @@ function harness(config = {}, options = {}) {
         runsWithDebugPython: () => runResolver === debugResolver,
     };
 }
+
+test("deactivate disposes the run terminal handle (audit #215 V7)", async () => {
+    const h = harness();
+    await h.activate();
+    assert.equal(h.runDisposed(), false);
+    await h.extension.deactivate();
+    assert.equal(h.runDisposed(), true);
+});
+
+test("language server restarts reuse a single file watcher (audit #215 V4)", async () => {
+    const h = harness();
+    await h.activate();
+    assert.equal(h.liveWatchers().length, 1);
+    // Verification repro: three restarts left three undisposed watchers.
+    await h.commands.get("kedi.restartServer")();
+    await h.commands.get("kedi.restartServer")();
+    await h.commands.get("kedi.restartServer")();
+    assert.equal(h.watchers.length, 4);
+    assert.equal(h.liveWatchers().length, 1);
+    assert.equal(h.watchers.filter(watcher => watcher.disposed).length, 3);
+    await h.extension.deactivate();
+    assert.equal(h.liveWatchers().length, 0);
+});
 
 test("managed services do not require the Microsoft Python extension", async () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8'));

@@ -95,6 +95,148 @@ export interface EmbeddedPython {
     dispose(): void;
 }
 
+// ------------------------------------------------------------
+// Pure source-map helpers (exported for unit tests).
+//
+// `virtualUri` is the shadow `.py` document the Python server
+// answers about. A result whose uri is anything else — a real
+// `.py` file in the workspace, a library file, … — is an external
+// location and must be returned unchanged: rewriting it onto the
+// `.kedi` file would point the user at the wrong file, and
+// dropping it would lose the definition/reference entirely.
+// ------------------------------------------------------------
+
+export function translatePosition(
+    fromRange: vscode.Range,
+    toRange: vscode.Range,
+    pos: vscode.Position
+): vscode.Position {
+    // The start-character offset only applies on the range's first line.
+    // On later lines the character is carried over unchanged: applying
+    // the offset there could go negative (e.g. pos (7,3) in a range
+    // starting at (5,10) gave 3 + 0 - 10 = -7, a RangeError).
+    const character =
+        pos.line === fromRange.start.line
+            ? pos.character + toRange.start.character - fromRange.start.character
+            : pos.character;
+    return new vscode.Position(
+        Math.max(0, toRange.start.line + pos.line - fromRange.start.line),
+        Math.max(0, character)
+    );
+}
+
+function rangeSourceMapEntries(cached: CachedDoc): SourceMapEntry[] {
+    return cached.ranges
+        .filter((range) => range.virtualRange !== undefined)
+        .map((range) => ({
+            kind: range.kind,
+            sourceRange: range.range,
+            virtualRange: range.virtualRange as vscode.Range,
+        }));
+}
+
+function sourceToVirtualEntries(cached: CachedDoc): SourceMapEntry[] {
+    return [...cached.mappings, ...rangeSourceMapEntries(cached)];
+}
+
+function virtualToSourceEntries(cached: CachedDoc): SourceMapEntry[] {
+    return [
+        ...cached.mappings,
+        ...rangeSourceMapEntries(cached),
+        ...cached.symbols,
+    ];
+}
+
+export function virtualPositionToSource(
+    cached: CachedDoc,
+    pos: vscode.Position
+): vscode.Position | undefined {
+    for (const mapping of virtualToSourceEntries(cached)) {
+        if (!mapping.virtualRange.contains(pos)) {
+            continue;
+        }
+        return translatePosition(
+            mapping.virtualRange,
+            mapping.sourceRange,
+            pos
+        );
+    }
+    return undefined;
+}
+
+export function virtualRangeToSource(
+    cached: CachedDoc,
+    range: vscode.Range
+): vscode.Range | undefined {
+    const start = virtualPositionToSource(cached, range.start);
+    let end = virtualPositionToSource(cached, range.end);
+    let endWasBoundary = false;
+    if (!end && range.end.character > 0) {
+        end = virtualPositionToSource(cached, range.end.translate(0, -1));
+        endWasBoundary = Boolean(end);
+    }
+    if (!start || !end) {
+        return undefined;
+    }
+    return new vscode.Range(start, endWasBoundary ? end.translate(0, 1) : end);
+}
+
+export function mapLocation(
+    cached: CachedDoc,
+    sourceUri: vscode.Uri,
+    virtualUri: vscode.Uri,
+    loc: vscode.Location
+): vscode.Location | undefined {
+    if (loc.uri && loc.uri.toString() !== virtualUri.toString()) {
+        return loc;
+    }
+    const mappedRange = virtualRangeToSource(cached, loc.range);
+    if (!mappedRange) {
+        return undefined;
+    }
+    return new vscode.Location(sourceUri, mappedRange);
+}
+
+export function mapDefinitionResults(
+    cached: CachedDoc,
+    sourceUri: vscode.Uri,
+    virtualUri: vscode.Uri,
+    defs: vscode.Location[] | vscode.LocationLink[]
+): vscode.Location[] | vscode.LocationLink[] {
+    const mapped: Array<vscode.Location | vscode.LocationLink> = [];
+    for (const def of defs) {
+        if (def instanceof vscode.Location) {
+            const loc = mapLocation(cached, sourceUri, virtualUri, def);
+            if (loc) {
+                mapped.push(loc);
+            }
+            continue;
+        }
+        if (
+            def.targetUri &&
+            def.targetUri.toString() !== virtualUri.toString()
+        ) {
+            mapped.push(def);
+            continue;
+        }
+        const targetRange = virtualRangeToSource(cached, def.targetRange);
+        const targetSelectionRange = virtualRangeToSource(
+            cached,
+            def.targetSelectionRange ?? def.targetRange
+        );
+        if (!targetRange || !targetSelectionRange) {
+            continue;
+        }
+        mapped.push({
+            ...def,
+            targetUri: sourceUri,
+            targetRange,
+            targetSelectionRange,
+        });
+    }
+    return mapped as vscode.Location[] | vscode.LocationLink[];
+}
+
 export function registerEmbeddedPython(
     context: vscode.ExtensionContext,
     initialClientGetter: () => LanguageClient | undefined
@@ -161,11 +303,19 @@ export function registerEmbeddedPython(
         );
         if (!list || token.isCancellationRequested || doc.version !== version) return undefined;
         const items = list.items.slice(0, limit);
-        const edits = await client.sendRequest<CompletionEdit[]>("kedi/pythonCompletions", {
-            textDocument: { uri: doc.uri.toString(), version }, text,
-            virtual: { text: focused.cached.virtualText, mappings: rawMappings(focused.cached.mappings) },
-            items: completionEdits(items),
-        }, token);
+        let edits: CompletionEdit[];
+        try {
+            edits = await client.sendRequest<CompletionEdit[]>("kedi/pythonCompletions", {
+                textDocument: { uri: doc.uri.toString(), version }, text,
+                virtual: { text: focused.cached.virtualText, mappings: rawMappings(focused.cached.mappings) },
+                items: completionEdits(items),
+            }, token);
+        } catch (error) {
+            // The language server is down or rejected the request: offer
+            // no completions instead of letting the provider reject.
+            console.error(`[kedi] pythonCompletions request failed: ${error}`);
+            return new vscode.CompletionList([], false);
+        }
         if (token.isCancellationRequested || doc.version !== version) return undefined;
         return new vscode.CompletionList(mappedCompletions(items, edits), list.isIncomplete || list.items.length > limit);
     };
@@ -232,7 +382,7 @@ export function registerEmbeddedPython(
         const defs = await executePythonProviderWithRetry<
             vscode.Location[] | vscode.LocationLink[]
         >("vscode.executeDefinitionProvider", virtualUri, virtualPos);
-        const mapped = mapDefinitionResults(cached, doc.uri, defs);
+        const mapped = mapDefinitionResults(cached, doc.uri, virtualUri, defs);
         if (hasDefinitionResults(mapped)) {
             return mapped;
         }
@@ -264,7 +414,7 @@ export function registerEmbeddedPython(
             virtualPos
         );
         const mapped = refs
-            .map((ref) => mapLocation(cached, doc.uri, ref))
+            .map((ref) => mapLocation(cached, doc.uri, virtualUri, ref))
             .filter((ref): ref is vscode.Location => Boolean(ref));
         const synthetic = syntheticSymbolAtVirtualPosition(cached, virtualPos);
         if (!synthetic) {
@@ -550,73 +700,6 @@ export function registerEmbeddedPython(
         return undefined;
     }
 
-    function virtualPositionToSource(
-        cached: CachedDoc,
-        pos: vscode.Position
-    ): vscode.Position | undefined {
-        for (const mapping of virtualToSourceEntries(cached)) {
-            if (!mapping.virtualRange.contains(pos)) {
-                continue;
-            }
-            return translatePosition(
-                mapping.virtualRange,
-                mapping.sourceRange,
-                pos
-            );
-        }
-        return undefined;
-    }
-
-    function sourceToVirtualEntries(cached: CachedDoc): SourceMapEntry[] {
-        return [...cached.mappings, ...rangeSourceMapEntries(cached)];
-    }
-
-    function virtualToSourceEntries(cached: CachedDoc): SourceMapEntry[] {
-        return [
-            ...cached.mappings,
-            ...rangeSourceMapEntries(cached),
-            ...cached.symbols,
-        ];
-    }
-
-    function rangeSourceMapEntries(cached: CachedDoc): SourceMapEntry[] {
-        return cached.ranges
-            .filter((range) => range.virtualRange !== undefined)
-            .map((range) => ({
-                kind: range.kind,
-                sourceRange: range.range,
-                virtualRange: range.virtualRange as vscode.Range,
-            }));
-    }
-
-    function translatePosition(
-        fromRange: vscode.Range,
-        toRange: vscode.Range,
-        pos: vscode.Position
-    ): vscode.Position {
-        return new vscode.Position(
-            toRange.start.line + pos.line - fromRange.start.line,
-            pos.character + toRange.start.character - fromRange.start.character
-        );
-    }
-
-    function virtualRangeToSource(
-        cached: CachedDoc,
-        range: vscode.Range
-    ): vscode.Range | undefined {
-        const start = virtualPositionToSource(cached, range.start);
-        let end = virtualPositionToSource(cached, range.end);
-        let endWasBoundary = false;
-        if (!end && range.end.character > 0) {
-            end = virtualPositionToSource(cached, range.end.translate(0, -1));
-            endWasBoundary = Boolean(end);
-        }
-        if (!start || !end) {
-            return undefined;
-        }
-        return new vscode.Range(start, endWasBoundary ? end.translate(0, 1) : end);
-    }
-
     function virtualWordRangeAt(
         cached: CachedDoc,
         pos: vscode.Position
@@ -726,50 +809,6 @@ export function registerEmbeddedPython(
                 loc.uri.toString() === candidate.uri.toString() &&
                 loc.range.isEqual(candidate.range)
         );
-    }
-
-    function mapLocation(
-        cached: CachedDoc,
-        sourceUri: vscode.Uri,
-        loc: vscode.Location
-    ): vscode.Location | undefined {
-        const mappedRange = virtualRangeToSource(cached, loc.range);
-        if (!mappedRange) {
-            return undefined;
-        }
-        return new vscode.Location(sourceUri, mappedRange);
-    }
-
-    function mapDefinitionResults(
-        cached: CachedDoc,
-        sourceUri: vscode.Uri,
-        defs: vscode.Location[] | vscode.LocationLink[]
-    ): vscode.Location[] | vscode.LocationLink[] {
-        const mapped: Array<vscode.Location | vscode.LocationLink> = [];
-        for (const def of defs) {
-            if (def instanceof vscode.Location) {
-                const loc = mapLocation(cached, sourceUri, def);
-                if (loc) {
-                    mapped.push(loc);
-                }
-                continue;
-            }
-            const targetRange = virtualRangeToSource(cached, def.targetRange);
-            const targetSelectionRange = virtualRangeToSource(
-                cached,
-                def.targetSelectionRange ?? def.targetRange
-            );
-            if (!targetRange || !targetSelectionRange) {
-                continue;
-            }
-            mapped.push({
-                ...def,
-                targetUri: sourceUri,
-                targetRange,
-                targetSelectionRange,
-            });
-        }
-        return mapped as vscode.Location[] | vscode.LocationLink[];
     }
 
     function kediToVirtual(

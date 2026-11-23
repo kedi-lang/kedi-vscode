@@ -41,7 +41,7 @@ function harness(options = {}) {
     const source = transformSync(fs.readFileSync(path.join(__dirname, "../src/run.ts"), "utf8"), { loader: "ts", format: "cjs" }).code;
     const module = { exports: {} };
     vm.runInNewContext(source, { module, exports: module.exports, require: name => name === "vscode" ? vscode : require(name) });
-    module.exports.registerRunCommands({ subscriptions: [] }, async resource => {
+    state.runHandle = module.exports.registerRunCommands({ subscriptions: [] }, async resource => {
         state.resource = resource.fsPath;
         return { python: "/shared/editor-venv/bin/python", args: ["-I"] };
     });
@@ -119,4 +119,41 @@ test("code lenses run tests and evals from each top-level validation block", () 
         [4, "$(play) Run evals", "kedi.runEvals"],
     ]);
     assert.equal(lenses[0].command.arguments[0].fsPath, program);
+});
+
+test("disposing the run commands disposes the open terminal (audit #215 V7)", async () => {
+    const h = harness();
+    await h.commands.get("kedi.runFile")();
+    assert.equal(h.terminals[0].disposed, false);
+    h.state.runHandle.dispose();
+    assert.equal(h.terminals[0].disposed, true);
+    h.state.runHandle.dispose(); // Second dispose is a no-op.
+    assert.equal(h.terminals[0].disposed, true);
+});
+
+test("code lenses ignore validation blocks inside comments and Python blocks (audit #215 V7)", () => {
+    const h = harness();
+    const lines = [
+        "@proc: main:",
+        "###",
+        "@test: something:", // Inside a block comment.
+        "###",
+        "= ```python",
+        "@test: fake:", // Inside a fenced Python block.
+        "```",
+        "@test: real_test:",
+        "[area: float] = ```",
+        "@test: fake2:", // Inside a value-returning Python block.
+        "```",
+        "@test: real2:",
+        "# @test: commented:", // Line comment.
+    ];
+    const lenses = h.state.lenses.provideCodeLenses({
+        uri: h.uri(program), lineCount: lines.length, lineAt: line => ({ text: lines[line] }),
+    });
+
+    assert.deepEqual(plain(lenses.map(lens => [lens.range.line, lens.command.title, lens.command.command])), [
+        [7, "$(play) Run tests", "kedi.runTests"],
+        [11, "$(play) Run tests", "kedi.runTests"],
+    ]);
 });
