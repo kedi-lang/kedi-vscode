@@ -686,6 +686,13 @@ loops, and sequential iterable loops. A trailing `:` after an inline Python
 header selects deterministic evaluation. A condition without that trailing
 colon is a Kedi template claim evaluated by the active agent adapter.
 
+Control blocks scope value bindings, not definitions. A procedure or Kedi type
+declared inside `> if:`, `> loop:`, `> map:`, or another control block belongs to
+the enclosing procedure invocation or, at top level, to the program, so it stays
+visible after the block. Top-level types are registered before the program
+runs, so their field types cannot name top-level variables; declare such a type
+inside a procedure, where field types resolve local aliases.
+
 ### Conditional branches
 
 ```kedi
