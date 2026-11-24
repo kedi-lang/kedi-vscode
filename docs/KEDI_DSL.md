@@ -892,6 +892,13 @@ Parallel map continuations may overlap. Source-order side effects and atomic
 read-modify-write operations are not implied: shared aggregates must use
 operations or synchronization appropriate for the active execution engine.
 
+If a map body defines a procedure or Kedi type, including inside a nested
+branch, loop, or active form, its continuations execute in source order even
+with a parallel engine. Those declarations update the enclosing invocation's
+shared definition scope. Define reusable procedures and types before the map
+to keep its continuations parallel. An iteration failure still drains the
+remaining continuations before it is raised.
+
 V1 permits one map clause, attached only to an immediately preceding
 binder-based iterable loop. It has no binder and creates no implicit result
 collection. An orphan map, a map after a conditional loop, or a second chained
@@ -2952,6 +2959,14 @@ must be observed with `wait_subagent` before the parent returns; fail-closed
 profiles reject unobserved work. Runtime timeouts start when the child starts,
 not when it is first waited. Completed results may be waited more than once,
 and cancellation is idempotent.
+
+Cancelling a foreground `delegate_task` or `continue_subagent` call also
+requests cancellation of its child and waits up to the cleanup deadline.
+Repeated cancellation does not skip that wait. If cleanup cannot be confirmed,
+the run remains unresolved rather than being reported as safely stopped.
+Cancelling an observer of an explicitly background child does not cancel that
+child. Cancelling one deduplicated workflow follower likewise leaves the shared
+child available to its other callers.
 
 Live background tasks are process-local and runtime-owned. Old terminal
 handles may expire after bounded retention.
