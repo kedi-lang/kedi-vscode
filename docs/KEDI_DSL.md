@@ -576,7 +576,11 @@ model with a `voice` field gets it, and LangChain's Gemini models take none). A 
 `> instructions:` go with it. It stays outside the conversation: with `> history: enabled` it
 neither reads nor records history. It counts as one model request for `> budget:`, and fallback
 models are not tried for it. Any other model or adapter fails before the call, and the editor
-reports `[x: Audio] <<` on adapters without speech output.
+reports `[x: Audio] <<` on adapters without speech output. A prompt that attaches media, or a
+call with a tool in scope that declares an audio return type (`-> Audio`, `-> list[Audio]`,
+`-> Media`), does not speak: the model names an audio of its request instead (see Media in
+outputs below), and the call is an ordinary turn of the conversation. Other tools leave the
+call speech; a speech request does not offer them.
 
 **Media from tools.** A tool that returns media (an `Image`, a `Document`, or a dict or model
 holding them) gives it to the model as media. The tool result names each one with a
@@ -618,7 +622,7 @@ output holds media get one instruction that says so. Only media of the current r
 be named: with `> history: enabled`, a later request may give an earlier name to other media.
 Pydantic AI, LangChain, the Claude Agent SDK and Codex resolve names; the harnesses' tool
 bridges send text only, so there the model names attachments. Tool arguments typed `Image`
-do not take names yet, and `[x: Audio] <<` remains speech output.
+do not take names yet.
 
 **Outside prompts.** A media value is a native value: keep it with single backticks
 (`` [copy: Image] = `cat_image` ``, ``<caption(`cat_image`)>``). `> show: `cat_image`` and
