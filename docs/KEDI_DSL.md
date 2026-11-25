@@ -557,7 +557,8 @@ OpenAI Responses model, which gets the image generation tool; with LangChain, a 
 whose profile sets `image_outputs` (Gemini image models). Image models take no tools: Kedi's
 artifact tools are left out for them, and a call with `> use:` tools fails before the request.
 Any other model names an image of its request instead (see Media in outputs below), and an
-OpenAI Responses model may either draw or name one. A model that cannot draw fails before the
+OpenAI Responses model may draw or name one when there is one to name. A model that cannot draw
+fails before the
 call when nothing could be named: no image attached, and no tool, MCP server or archived
 history that could return one. On adapters without image output (the Claude Agent SDK,
 Codex), the model can only name an attached image; without one the call fails before it
@@ -618,7 +619,8 @@ that value:
 The model writes the name the request gives the media (`satellite_result_1`, `photos_2`) or
 its placeholder (`<image satellite_result_1>`). Any other string is refused, made-up URLs and
 data URIs included; the model reads the names it can use and answers again. Requests whose
-output holds media get one instruction that says so. Only media of the current request can
+output holds media, and that attach media or offer tools, get one instruction that says so.
+Only media of the current request can
 be named: with `> history: enabled`, a later request may give an earlier name to other media.
 Pydantic AI, LangChain, the Claude Agent SDK and Codex resolve names; the harnesses' tool
 bridges send text only, so there the model names attachments. Tool arguments typed `Image`
