@@ -500,18 +500,22 @@ Kedi fails before the model call when a known provider cannot take an attachment
 example video on OpenAI. With LangChain it also honors the model profile flags
 (`image_inputs`, `pdf_inputs`, `audio_inputs`, `video_inputs`).
 
-The Claude Agent SDK and Codex harnesses take part of this:
+Agent harnesses take part of this:
 
 | Harness | Media | Sent as |
 | --- | --- | --- |
 | Claude Agent SDK | images and PDFs | content blocks, from data or an http(s) URL |
 | Codex | images | data as a temporary local file for the turn, an http(s) URL or an OpenAI file id |
+| ACP | what the agent's `promptCapabilities` allow | image and audio blocks; PDFs and video as embedded resources; URLs are downloaded first |
+| A2A | the media types the agent card's `defaultInputModes` list | `raw` parts for data, `url` parts for http(s) URLs, each with its media type and file name |
 
-Text documents go inline on both. Other media fails before the call. Neither replays its
-history through Kedi, so each turn of a continued conversation sends the media it references.
+Text documents go inline on all four. Other media, and media the ACP agent or A2A card does
+not advertise, fails before the call. None replays its history through Kedi, so each turn of
+a continued conversation sends the media it references. Kedi's own A2A server lists only
+`text/plain`, so it is refused media.
 
-WebGPU, ACP and A2A do not accept media and fail before model I/O; the editor reports such
-prompts statically.
+WebGPU does not accept media and fails before model I/O. The editor reports media prompts on
+adapters without media input; it does not check which kinds a harness reads.
 
 Decision models read less. Jev (`typesafe/...`) reads images and text documents: images
 reach TypeSafe as image assets, and Kedi downloads image URLs first. TypeSafe image input
@@ -1783,7 +1787,7 @@ This language rename does not change the Python `system=` configuration API.
   | `deferred_tools` | loads capabilities with `defer: true` on demand | Pydantic AI |
   | `live_subagent_input` | a parent sends messages to a running subagent | Pydantic AI, LangChain, Claude, Codex; ACP and A2A depend on the agent |
   | `subagent_interrupt` | a parent interrupts a running subagent | Pydantic AI, LangChain, Claude, Codex; ACP and A2A depend on the agent |
-  | `media_input` | images, audio, video and documents in the prompt | Pydantic AI, LangChain; images and PDFs on Claude, images on Codex |
+  | `media_input` | images, audio, video and documents in the prompt | Pydantic AI, LangChain; images and PDFs on Claude, images on Codex; ACP and A2A by what the remote agent advertises |
 - `> model: name` — set the active model for subsequent procedure captures (plain
   name or `` `expression` ``). With the Pydantic adapter, `codex/<model>` selects
   a Codex-authenticated Responses model on Python 3.11+ through the optional
