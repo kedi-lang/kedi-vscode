@@ -507,6 +507,24 @@ reach TypeSafe as image assets, and Kedi downloads image URLs first. TypeSafe im
 is experimental and takes PNG or JPEG images of 16 MiB at most, each side 280 to 1568
 pixels ([TypeSafe image limits](https://docs.typesafe.ai/images)); Kedi checks these before the call. Laya reads text documents; its engine checkpoint `laya/vega` (laya 0.5+, PyTorch) also reads one image, audio or video per decision, sent as data with the prompt text as context for each question. Kedi rejects any other attachment for them before the call.
 
+**Video settings (Gemini).** `video()` and `Video.with_settings()` take a clip's `start` and
+`end` offsets in seconds, `fps` (frames sampled per second, above 0 and at most 24) and
+`resolution` (`low`, `medium` or `high`; Gemini 3 and later):
+
+```kedi
+> import: media
+
+[intro: Video] = `video("talk.mp4", start=0, end=30, fps=2, resolution="low")`
+[reply] << Summarize <<intro>>.
+```
+
+Settings omitted from `with_settings()` are kept, and `None` clears one. They are part of
+the value's identity: two clips of one file are two attachments, a different clip is sent
+again in history, and a cached call with a different clip calls the model again. Only
+Gemini reads them, so Kedi refuses a video with settings for any other provider, including
+an unrecognized one, rather than sending the whole video. JSON serialization of a `Video`
+keeps only its source, not its settings.
+
 URLs go to the provider as URLs when the model accepts them. Otherwise Kedi downloads them,
 over `http(s)` only, with private and cloud-metadata addresses blocked. YouTube URLs are
 never downloaded, and only Gemini reads them. `s3://` and `gs://` URIs pass through. Do not
