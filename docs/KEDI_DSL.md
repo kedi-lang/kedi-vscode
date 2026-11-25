@@ -596,7 +596,10 @@ displays the image, or an audio player for audio, instead of the label.
 holds under the same ID and content is not sent again; the prompt text still writes the ID.
 An ID that now holds different content is attached again. With a history processor, native
 compaction or history archiving, Kedi cannot tell what the model still sees and attaches
-references on every turn.
+references on every turn. History archiving stores each image, audio, video or PDF of the
+archived turns once as an artifact of its own; the archived transcript names it by reference
+(`kedi-artifact:<ref>`), the checkpoint lists it, and `read_artifact` returns it as media, which
+Pydantic AI and LangChain send natively. Media in the turns that are kept stay in place.
 
 **Python.** `kedi.media` provides the same types: `Image.from_path(path)`,
 `Image.from_url(url)`, `Image.from_bytes(data, "image/png")`,
