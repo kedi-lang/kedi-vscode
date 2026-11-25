@@ -567,7 +567,9 @@ With LangChain, an audio chat model: a Gemini TTS model (`gemini-2.5-flash-previ
 reads the prompt aloud and so gets no instructions, or an OpenAI audio model (`gpt-audio`).
 `voice` in `> settings:` picks the voice (Kore on Gemini, alloy on OpenAI; LangChain's Gemini
 models take none). A speech request sends text only and offers no tools; only the program's own
-`> instructions:` go with it. Any other model or adapter fails before the call, and the editor
+`> instructions:` go with it. It stays outside the conversation: with `> history: enabled` it
+neither reads nor records history. It counts as one model request for `> budget:`, and fallback
+models are not tried for it. Any other model or adapter fails before the call, and the editor
 reports `[x: Audio] <<` on adapters without speech output.
 
 **Media from tools.** A tool that returns media (an `Image`, a `Document`, or a dict or model
