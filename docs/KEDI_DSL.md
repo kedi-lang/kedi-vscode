@@ -421,9 +421,13 @@ Does cat1 match the description in spec? Compare cat1 carefully.
   is a `<document>` holding its text form, exactly the text `<value>` renders: scalars as
   `text/plain`, lists, tuples and dicts as JSON (`application/json`). References also accept
   models, `~Type` values and dataclasses, written as JSON by their own schema; a set of two or
-  more items or a non-finite number inside one is an error that names the field. `None`, values without a text form (a set,
-  for example) and media nested inside a dict, a model or a mixed list are errors; reference
-  each media value directly.
+  more items or a non-finite number inside one is an error that names the field. `None` and
+  values without a text form (a set, for example) are errors.
+- **Media inside a value.** Media in a dict, a model, a dataclass or a mixed list are attached
+  each under a name derived from its path (`report_photo`, `report_pets_1`), and the value
+  goes as JSON with a placeholder naming each one: `{"title":"Q3","photo":"<image report_photo>"}`.
+  An image also referenced directly keeps its first name, and only media the value's
+  serialization writes are attached (an excluded field is not).
 - **Stored values.** A value that already is an artifact, which only an agent session creates
   (for example from a large tool result), goes as its reference: `<artifact id="log">` with the artifact
   reference, and the model reads it with the artifact tools. When the call has no artifact
@@ -435,9 +439,10 @@ Does cat1 match the description in spec? Compare cat1 carefully.
   instructions.
 - **Where.** References are valid only in model prompts: `>>` templates (with or without
   output fields), `[x] << ...` and `[x: T] << ...` raw invokes, and `> if:` / `> loop:`
-  template conditions, including those that run on decision models. Anywhere else, such as
-  an initialization, an assignment, a return, `> show:`, `> instructions:`, a subagent task
-  or a procedure argument, `<<...>>` is a parse error (`K-REFERENCE-CONTEXT`).
+  template conditions, including those that run on decision models, and `> task` prompts,
+  whose attachments go to the child. Anywhere else, such as an initialization, an
+  assignment, a return, `> show:`, `> instructions:`, `> send` or `> interrupt` input or a
+  procedure argument, `<<...>>` is a parse error (`K-REFERENCE-CONTEXT`).
 
 `<cat1>` for an image is a type error, not an attachment: `<...>` always renders text.
 Whether a list of strings is written into the text (`<items>`) or attached as a JSON
@@ -2702,7 +2707,11 @@ targets, and recursive expansion are rejected. The 32 KiB size and nesting-depth
 Its body is exactly one ordinary `>>` template block; same-indent continuation
 rows belong to that block. A second `>>` is an error. Explicit `<inputs>` are
 rendered once when the task starts; parent variables and conversation history
-are not implicitly sent to the child.
+are not implicitly sent to the child. `<<x>>` in the task prompt attaches media to the
+child's first request; the child's adapter must take media input, which `> task` checks
+before the child starts and the editor reports statically. A restarted or interrupted child
+keeps them in its session; a continued conversation on an adapter without native resume
+(LangChain, Codex, ACP) replays earlier turns as text, without their media.
 
 ```kedi
 > profile: reviewer:
