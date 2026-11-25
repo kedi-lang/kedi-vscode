@@ -558,6 +558,18 @@ profile sets `image_outputs` (Gemini image models). Any other model or adapter f
 call, and the editor reports `[x: Image] <<` on adapters without image output. Image models take
 no tools, so Kedi's artifact tools are left out for them.
 
+**Speech output.** `[speech: Audio] << Read this aloud: <script>` asks the model itself to speak
+and binds an `Audio` (WAV): reference it, `save()` it or play it in Kedi Notebook. Its
+`transcript` holds what the model said, when the model reports it. With Pydantic AI the model must
+be a realtime model (`google:gemini-3.1-flash-live-preview`, `openai:gpt-realtime`): Kedi opens a
+one-shot realtime session, sends the prompt, keeps the reply's speech and closes the session.
+With LangChain, an audio chat model: a Gemini TTS model (`gemini-2.5-flash-preview-tts`), which
+reads the prompt aloud and so gets no instructions, or an OpenAI audio model (`gpt-audio`).
+`voice` in `> settings:` picks the voice (Kore on Gemini, alloy on OpenAI; LangChain's Gemini
+models take none). A speech request sends text only and offers no tools; only the program's own
+`> instructions:` go with it. Any other model or adapter fails before the call, and the editor
+reports `[x: Audio] <<` on adapters without speech output.
+
 **Media from tools.** A tool that returns media (an `Image`, a `Document`, or a dict or model
 holding them) gives it to the model as media. The tool result names each one with a
 placeholder (`<image snap_result_1>`, or JSON holding placeholders), and the media follow
@@ -1818,6 +1830,7 @@ This language rename does not change the Python `system=` configuration API.
   | `subagent_interrupt` | a parent interrupts a running subagent | Pydantic AI, LangChain, Claude, Codex; ACP and A2A depend on the agent |
   | `media_input` | images, audio, video and documents in the prompt | Pydantic AI, LangChain; images and PDFs on Claude, images on Codex; ACP and A2A by what the remote agent advertises |
   | `image_output` | `[img: Image] << ...` returns an image | Pydantic AI, LangChain (image models) |
+  | `audio_output` | `[speech: Audio] << ...` returns speech | Pydantic AI (realtime models), LangChain (audio models) |
 - `> model: name` — set the active model for subsequent procedure captures (plain
   name or `` `expression` ``). With the Pydantic adapter, `codex/<model>` selects
   a Codex-authenticated Responses model on Python 3.11+ through the optional
@@ -2370,7 +2383,7 @@ This language rename does not change the Python `system=` configuration API.
 
   | Adapter | Settings |
   |---|---|
-  | Kedi (every adapter) | `context_limit`, `media_limit`, `tool_reason` |
+  | Kedi (every adapter) | `context_limit`, `media_limit`, `request_retries`, `tool_reason`, `voice` |
   | Pydantic AI | `decision_boolean_threshold`, `decision_tool_call_threshold`, `extra_body`, `extra_headers`, `frequency_penalty`, `logit_bias`, `max_tokens`, `parallel_tool_calls`, `presence_penalty`, `response_cache`, `response_cache_ttl`, `seed`, `service_tier`, `stop_sequences`, `temperature`, `thinking`, `timeout`, `tool_choice`, `top_p` |
   | LangChain | `api_key`, `base_url`, `callbacks`, `configurable_fields`, `configurable_prefix`, `decision_boolean_threshold`, `decision_tool_call_threshold`, `disable_streaming`, `extra_body`, `extra_headers`, `frequency_penalty`, `logit_bias`, `max_retries`, `max_tokens`, `metadata`, `model_kwargs`, `organization`, `parallel_tool_calls`, `presence_penalty`, `rate_limiter`, `reasoning`, `reasoning_effort`, `response_cache`, `response_cache_ttl`, `seed`, `stop`, `stop_sequences`, `stream_usage`, `streaming`, `tags`, `temperature`, `timeout`, `tool_choice`, `top_p` |
   | Claude | `allowed_tools`, `cwd`, `disallowed_tools`, `env`, `fallback_model`, `max_budget_usd`, `max_turns`, `permission_mode`, `tools` |
