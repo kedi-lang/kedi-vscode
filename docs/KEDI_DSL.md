@@ -550,6 +550,14 @@ over `http(s)` only, with private and cloud-metadata addresses blocked. YouTube 
 never downloaded, and only Gemini reads them. `s3://` and `gs://` URIs pass through. Do not
 build media URLs from untrusted input.
 
+**Image output.** `[img: Image] << Draw a cat.` asks the model itself for an image and binds
+an `Image`, an ordinary media value: reference it (`<<img>>`), `save()` it or show it. With
+Pydantic AI the model must be an image model (`google:gemini-2.5-flash-image`) or an OpenAI
+Responses model, which gets the image generation tool; with LangChain, a chat model whose
+profile sets `image_outputs` (Gemini image models). Any other model or adapter fails before the
+call, and the editor reports `[x: Image] <<` on adapters without image output. Image models take
+no tools, so Kedi's artifact tools are left out for them.
+
 **Outside prompts.** A media value is a native value: keep it with single backticks
 (`` [copy: Image] = `cat_image` ``, ``<caption(`cat_image`)>``). `> show: `cat_image`` and
 Python `str()` display a byte-free label such as `<image cat.png · image/png · 48 KB>`.
@@ -1793,6 +1801,7 @@ This language rename does not change the Python `system=` configuration API.
   | `live_subagent_input` | a parent sends messages to a running subagent | Pydantic AI, LangChain, Claude, Codex; ACP and A2A depend on the agent |
   | `subagent_interrupt` | a parent interrupts a running subagent | Pydantic AI, LangChain, Claude, Codex; ACP and A2A depend on the agent |
   | `media_input` | images, audio, video and documents in the prompt | Pydantic AI, LangChain; images and PDFs on Claude, images on Codex; ACP and A2A by what the remote agent advertises |
+  | `image_output` | `[img: Image] << ...` returns an image | Pydantic AI, LangChain (image models) |
 - `> model: name` — set the active model for subsequent procedure captures (plain
   name or `` `expression` ``). With the Pydantic adapter, `codex/<model>` selects
   a Codex-authenticated Responses model on Python 3.11+ through the optional
