@@ -562,10 +562,11 @@ no tools, so Kedi's artifact tools are left out for them.
 holding them) gives it to the model as media. The tool result names each one with a
 placeholder (`<image snap_result_1>`, or JSON holding placeholders), and the media follow
 natively: Pydantic AI places them inside the tool result where the provider takes them
-(Anthropic, Gemini 3) and in a following user message otherwise (OpenAI); LangChain keeps them
+(Anthropic, Gemini 3) and in a following user message otherwise (OpenAI, Gemini 2.x); LangChain keeps them
 in the tool message when the model's profile sets `image_tool_message` or `pdf_tool_message`
 and moves them to a following user message otherwise. Provider rules and `media_limit` apply as
-for prompt media, and media are never stored as artifacts. CodeMode code receives the
+for prompt media, and media are never stored as artifacts. Names are unique within one request,
+as prompt names are, so a later request may reuse `snap_result_1`. CodeMode code receives the
 placeholders, and media its result names are attached to it. The Claude Agent SDK, Codex and
 WebGPU tool bridges send text only: the model reads a tool error instead. PostToolUse hooks see
 the result as the adapter sends it, media included.
