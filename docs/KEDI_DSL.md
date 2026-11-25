@@ -558,6 +558,18 @@ profile sets `image_outputs` (Gemini image models). Any other model or adapter f
 call, and the editor reports `[x: Image] <<` on adapters without image output. Image models take
 no tools, so Kedi's artifact tools are left out for them.
 
+**Media from tools.** A tool that returns media (an `Image`, a `Document`, or a dict or model
+holding them) gives it to the model as media. The tool result names each one with a
+placeholder (`<image snap_result_1>`, or JSON holding placeholders), and the media follow
+natively: Pydantic AI places them inside the tool result where the provider takes them
+(Anthropic, Gemini 3) and in a following user message otherwise (OpenAI); LangChain keeps them
+in the tool message when the model's profile sets `image_tool_message` or `pdf_tool_message`
+and moves them to a following user message otherwise. Provider rules and `media_limit` apply as
+for prompt media, and media are never stored as artifacts. CodeMode code receives the
+placeholders, and media its result names are attached to it. The Claude Agent SDK, Codex and
+WebGPU tool bridges send text only: the model reads a tool error instead. PostToolUse hooks see
+the result as the adapter sends it, media included.
+
 **Outside prompts.** A media value is a native value: keep it with single backticks
 (`` [copy: Image] = `cat_image` ``, ``<caption(`cat_image`)>``). `> show: `cat_image`` and
 Python `str()` display a byte-free label such as `<image cat.png · image/png · 48 KB>`.
