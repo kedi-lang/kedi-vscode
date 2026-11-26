@@ -1830,7 +1830,7 @@ This language rename does not change the Python `system=` configuration API.
   https://github.com/kedi-lang/dspy-adapter; GEPA still uses DSPy through `kedi[dspy]`.
 - `> agent: name` — select an agent harness adapter for following LLM calls
   in the current lexical scope. Built-in harness shortnames are `claude`,
-  `codex`, `acp`, and `a2a`. ACP commands use a typed connection body:
+  `codex`, `acp`, `a2a`, and `rpc`. ACP commands use a typed connection body:
 
   ```kedi
   > agent: acp:
@@ -1843,7 +1843,13 @@ This language rename does not change the Python `system=` configuration API.
   determined dynamically at runtime.
 
   The ACP command may be plain text or an inline Python expression that
-  evaluates to a string or string sequence. A2A connections use
+  evaluates to a string or string sequence. `> agent: rpc:` takes the same
+  `command:` body and launches a JSON-RPC bridge, a backend in any language
+  that speaks Kedi's adapter protocol. Kedi launches one bridge per distinct
+  command, completes its handshake before the first call, and stops it when
+  the runtime closes. The bridge's handshake decides its capabilities, so
+  `> requires:` is checked against the launched bridge. Only bridges that
+  negotiate `agent-harness` can be selected this way. A2A connections use
   `> agent: a2a:` with a required `endpoint`, optional `auth` block, and
   optional positive `request_timeout`, `task_timeout`, and `poll_interval`
   fields. The auth block supports Basic (`username` plus `password_env` or
