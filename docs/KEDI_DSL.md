@@ -658,7 +658,9 @@ new ID (`photo_2`), the same content keeps its first ID, and a tool's second ima
 `snap_result_2`, so an ID never means two media. With the parallel engine, which of two
 requests composed at once gets the `_2` suffix can differ between runs; names stay unique. A
 conversation restored from a checkpoint keeps its names but not their media: new media get new
-names, and an earlier name can no longer be named. With a history processor, native
+names, and an earlier name can no longer be named. To resolve names, a conversation keeps every
+media it named in memory for its lifetime, including media that history archiving or
+compaction has dropped from the history. With a history processor, native
 compaction or history archiving, Kedi cannot tell what the model still sees and attaches
 references on every turn. History archiving stores each image, audio, video or PDF of the
 archived turns once as an artifact of its own; the archived transcript names it by reference
