@@ -590,9 +590,9 @@ natively: Pydantic AI places them inside the tool result where the provider take
 (Anthropic, Gemini 3) and in a following user message otherwise (OpenAI, Gemini 2.x); LangChain keeps them
 in the tool message when the model's profile sets `image_tool_message` or `pdf_tool_message`
 and moves them to a following user message otherwise. Provider rules and `media_limit` apply as
-for prompt media, and media are never stored as artifacts. Names are unique within one request,
-as prompt names are, so a later request may reuse `snap_result_1`, and a tool's media never
-take an attachment's name. The model can answer with them by name (see Media in outputs below).
+for prompt media, and media are never stored as artifacts. Names are unique within a request,
+and across the requests of a conversation (see History below), and a tool's media never take
+an attachment's name. The model can answer with them by name (see Media in outputs below).
 CodeMode code receives the
 placeholders, and media its result names are attached to it. The Claude Agent SDK, Codex and
 WebGPU tool bridges send text only: the model reads a tool error instead. PostToolUse hooks see
@@ -619,12 +619,16 @@ that value:
 The model writes the name the request gives the media (`satellite_result_1`, `photos_2`) or
 its placeholder (`<image satellite_result_1>`). Any other string is refused, made-up URLs and
 data URIs included; the model reads the names it can use and answers again. Requests whose
-output holds media, and that attach media or offer tools, get one instruction that says so.
-Only media of the current request can
-be named: with `> history: enabled`, a later request may give an earlier name to other media.
-Pydantic AI, LangChain, the Claude Agent SDK and Codex resolve names; the harnesses' tool
-bridges send text only, so there the model names attachments. Tool arguments typed `Image`
-do not take names yet.
+output holds media, or that offer a tool taking media, and that attach media or offer tools,
+get one instruction that says so. In a conversation the model can also name media of its
+earlier requests. Pydantic AI, LangChain, the Claude Agent SDK and Codex resolve names; the
+harnesses' tool bridges send text only, so there the model names attachments.
+
+Tool arguments take names the same way: a model hands a tool an image of its request
+(`@crop(photo: Image)`, called with `photo: satellite_result_1`), and a wrong name fails the
+tool call with the names it can use. A `> task` capture typed with media names one of the
+child's media, and the program gets the value. A `delegate_task` result goes to the parent
+model and to workflows as JSON, so it names none.
 
 **Outside prompts.** A media value is a native value: keep it with single backticks
 (`` [copy: Image] = `cat_image` ``, ``<caption(`cat_image`)>``). `> show: `cat_image`` and
@@ -649,7 +653,12 @@ displays the image, or an audio player for audio, instead of the label.
 
 **History.** With `> history: enabled`, an attachment that the replayed history already
 holds under the same ID and content is not sent again; the prompt text still writes the ID.
-An ID that now holds different content is attached again. With a history processor, native
+Names are unique across the conversation's requests: a binding rebound to new content gets a
+new ID (`photo_2`), the same content keeps its first ID, and a tool's second image is
+`snap_result_2`, so an ID never means two media. With the parallel engine, which of two
+requests composed at once gets the `_2` suffix can differ between runs; names stay unique. A
+conversation restored from a checkpoint keeps its names but not their media: new media get new
+names, and an earlier name can no longer be named. With a history processor, native
 compaction or history archiving, Kedi cannot tell what the model still sees and attaches
 references on every turn. History archiving stores each image, audio, video or PDF of the
 archived turns once as an artifact of its own; the archived transcript names it by reference
