@@ -232,6 +232,52 @@ kedi add git+https://github.com/user/project.git
 
 Kedi performs a shallow, no-checkout clone with Git's blob filter, reads `package.kedi` at the repository root, then sparse-checks out only the declared source tree before installing it and printing the checked-out commit. The Git source must be credential-free and hosted on `github.com`; package sources are limited to regular files/directories, a bounded source-tree size, and literal directory paths rather than Git sparse-checkout patterns. This is intentionally separate from package-registry resolution: an explicit Git source is reported as unverified by `kedi audit`, even when its repository also hosts a registered package.
 
+#### Package Adapters
+
+A package can expose agent integrations under shortnames of its own. `adapters:` names
+each one, its `kind`, and how Kedi builds it:
+
+```kedi
+> package: pi:
+  version: 0.1.0
+  source: src/pi
+  adapters:
+    pi:
+      kind: agent
+      command: node bridge.mjs
+```
+
+A module that imports the package then selects it like a built-in adapter:
+
+```kedi
+> import: pi
+> agent: pi
+> model: google/gemini-3.5-flash-lite
+[summary] << Summarize README.md in one sentence.
+```
+
+- `kind: agent` is selected with `> agent:` and must be an agent harness; `kind: adapter` is
+  selected with `> adapter:` and must be an agent framework. Kedi checks the built adapter's
+  kind and refuses one that differs.
+- `command:` launches a JSON-RPC bridge ([JSON-RPC Bridges](https://kedi-lang.github.io/kedi-docs/adapter-development/json-rpc-bridges/)) through `JsonRpcAdapter`. An argument
+  that names a regular file of the package's `source` tree is passed as that file's absolute
+  path, so `node bridge.mjs` runs the installed `bridge.mjs`. Kedi starts one bridge per
+  command and model and stops it when the runtime closes. A program missing from `PATH` is
+  reported before launch.
+- `class:` names a Python adapter class as `module:Class`, built with `Class(model=...)`. Its
+  module comes from the interpreter running Kedi, usually through `python_dependencies`; it is
+  imported only when a program selects the adapter, never when the package is installed or
+  imported.
+- A shortname follows the package name rules and cannot be a built-in adapter's (`pydantic`,
+  `langchain`, `claude`, `codex`, `acp`, `a2a`, `rpc`, `dspy`). Each entry has exactly one of
+  `class:` or `command:`.
+- An import registers the package's adapters in the importing module only. Importing a module
+  that imports `pi` does not make `pi` selectable, while a procedure or profile written where
+  `pi` is imported keeps its adapter wherever it is called. Two imported packages declaring
+  one shortname fail at import, naming both.
+- Package adapters come from installed packages (`kedi install`, `kedi add`). A sibling or
+  bundled module of the same name takes precedence over the package and exposes none.
+
 `KEDI_HOME`, when set, must be an absolute path. Kedi rejects a relative override so a program cannot switch registries merely because it changes its working directory.
 
 > [!WARNING]
