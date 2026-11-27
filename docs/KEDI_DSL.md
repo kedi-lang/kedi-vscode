@@ -220,7 +220,19 @@ optional PEP 440 version.
 
 `source` is relative to `package.kedi` and must contain `main.kedi`. From the package root, run `kedi install` (or `kedi install path/to/package.kedi`) to copy the manifest and that source tree into `$HOME/.kedi/registry/<package-name>`. Imports resolve the package root to `main.kedi`, so `> import: kedi_http` loads `src/kedi_http/main.kedi`; `> import: kedi_http/client` loads `src/kedi_http/client.kedi`.
 
-The `python` field accepts only a fixed version (`python@3.11`) or an inclusive closed range (`python@3.11-3.14`). `python_dependencies` lists PEP 508 requirements. Both `kedi install` and `kedi add` install them into the interpreter running Kedi (`sys.executable`), using that interpreter's pip or `uv pip --python` when pip is unavailable. A dependency failure leaves the previous Kedi package in place. Python environment changes are managed by the Python installer and are not rolled back by Kedi. Importing a package or reading its manifest never installs dependencies. Packages installed from the registry or a Git URL may not use direct references (`name @ https://...`) in `python_dependencies`; local packages may.
+The `python` field accepts only a fixed version (`python@3.11`) or an inclusive closed range (`python@3.11-3.14`). `python_dependencies` lists PEP 508 requirements. Both `kedi install` and `kedi add` install them into the interpreter running Kedi (`sys.executable`), using that interpreter's pip or `uv pip --python` when pip is unavailable. A dependency failure leaves the previous Kedi package in place. Importing a package or reading its manifest never installs dependencies. Packages installed from the registry or a Git URL may not use direct references (`name @ https://...`) in `python_dependencies`; local packages may.
+
+A removed package leaves nothing behind. Its install receipt records what the installation created, and how and when each thing goes:
+- **Inside the package directory.** These go with the package: its source tree, and `.kedi-runtime/`, where its adapters keep run-time files.
+- **Python distributions.** The receipt lists the distributions the install added to Kedi's interpreter. A reinstall keeps them on the record.
+- **Upgrades.** A distribution the install only upgraded is recorded as changed and never reverted.
+
+`kedi remove <package-name>` deletes the package and an interrupted installation's leftovers.
+- **Python is left alone by default.** The Python distributions the package added stay: another program may use them.
+- **`--with-python-dependencies` removes them too.** Even then, Kedi keeps any distribution that another installed package needs, that another installed distribution requires, or whose version changed since, and says which and why.
+- **`--dry-run`** prints the plan without removing anything.
+
+`kedi python install <requirement>...` installs into Kedi's interpreter outside any package, so no `kedi remove` touches it; `kedi python install uv` installs uv there.
 
 `kedi add <package-name>` resolves `https://registry.kedi-lang.org/v1/package/<package-name>.json` and installs the active package at its exact registry-verified Git commit, not repository HEAD. Set `KEDI_REGISTRY_URL` to use another HTTPS registry or a loopback HTTP test server. `KEDI_REGISTRY_MOCK_ROOT` selects a local source-directory fixture instead of the HTTP registry; it is for development, not verified distribution. Package installation writes a Kedi-owned `.kedi-install.json` receipt with the source kind, manifest digest, repository and commit provenance. `kedi audit` checks installed receipts against the registry's commit-status index without importing package code; it reports yanked and revoked commits as actionable findings.
 
@@ -263,7 +275,9 @@ A module that imports the package then selects it like a built-in adapter:
   that names a regular file of the package's `source` tree is passed as that file's absolute
   path, so `node bridge.mjs` runs the installed `bridge.mjs`. Kedi starts one bridge per
   command and model and stops it when the runtime closes. A program missing from `PATH` is
-  reported before launch.
+  reported before launch. The bridge gets `KEDI_PACKAGE_RUNTIME_DIR`, the package's
+  `.kedi-runtime/` directory, for its run-time files, and `KEDI_BRIDGE_CACHE` below it for the
+  bridge SDKs' preflight cache, so `kedi remove` takes them with the package.
 - `class:` names a Python adapter class as `module:Class`, built with `Class(model=...)`. Its
   module comes from the interpreter running Kedi, usually through `python_dependencies`; it is
   imported only when a program selects the adapter, never when the package is installed or
