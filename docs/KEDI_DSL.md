@@ -310,8 +310,10 @@ A module that imports the package then selects it like a built-in adapter:
     one uv manages, downloaded there too, so upgrading a system Python cannot break it; set
     `UV_PYTHON_PREFERENCE` to let uv use an installed one. uv's cache is removed when the sync
     ends.
-  - **When it fails.** If the sync fails, the new package is deleted and the previous version
-    comes back.
+  - **When it fails.** If the sync fails or is interrupted (Ctrl+C), the new package is deleted
+    and the previous version comes back. An installation that was killed outright leaves an
+    environment without its `ready` marker, and the adapter then refuses to run until the package
+    is installed again.
   - **uv.** It must be installed: `kedi python install uv`.
   - **Running.** The command's program runs from the environment when the environment has it,
     so `python bridge.py` uses the environment's interpreter. Nothing is installed into the
