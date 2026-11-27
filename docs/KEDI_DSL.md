@@ -321,6 +321,29 @@ A module that imports the package then selects it like a built-in adapter:
   - **Removal.** `kedi remove` takes the environment with the package.
 
   ```kedi
+  > package: tools:
+    version: 0.1.0
+    source: src/tools
+    adapters:
+      tools:
+        kind: agent
+        command: python bridge.py
+        environment: uv
+  ```
+- `environment_project:` names the uv project of an `environment: uv` instead, as a GitHub
+  repository at an exact commit: `git+https://github.com/OWNER/REPOSITORY@<40-character commit>`.
+  It is for a harness that ships no wheel and supports only a source checkout (Hermes). A tag
+  or branch is refused, because either can move; the commit is the content's identity.
+  - **At install.** Kedi fetches that one commit, without history or tags, into
+    `.kedi-env/project/`, drops its `.git`, and runs `uv sync --frozen --no-dev` there. That
+    installs the project itself, editable, from its own `uv.lock`.
+  - **Afterwards.** `project/` stays, because the editable install runs from it, and `kedi remove`
+    takes it with the package.
+  - **One per package.** The package's source then needs no `pyproject.toml` or `uv.lock`. Every
+    `environment: uv` adapter of a package shares its environment, so they name the same project,
+    or none.
+
+  ```kedi
   > package: hermes:
     version: 0.1.0
     source: src/hermes
@@ -329,6 +352,7 @@ A module that imports the package then selects it like a built-in adapter:
         kind: agent
         command: python bridge.py
         environment: uv
+        environment_project: git+https://github.com/NousResearch/hermes-agent@8fc0374447313e276f6b9a2764bfc750190c966a
   ```
 - `class:` names a Python adapter class as `module:Class`, built with `Class(model=...)`. Its
   module comes from the interpreter running Kedi, usually through `python_dependencies`; it is
