@@ -222,15 +222,39 @@ optional PEP 440 version.
 
 The `python` field accepts only a fixed version (`python@3.11`) or an inclusive closed range (`python@3.11-3.14`). `python_dependencies` lists PEP 508 requirements. Both `kedi install` and `kedi add` install them into the interpreter running Kedi (`sys.executable`), using that interpreter's pip or `uv pip --python` when pip is unavailable. A dependency failure leaves the previous Kedi package in place. Importing a package or reading its manifest never installs dependencies. Packages installed from the registry or a Git URL may not use direct references (`name @ https://...`) in `python_dependencies`; local packages may.
 
+`kedi_dependencies` lists the Kedi packages a package needs. Each entry is a package name, optionally with a PEP 440 specifier:
+
+```kedi
+> package: release_tools:
+  version: 1.0.0
+  source: src/release_tools
+  kedi_dependencies:
+    hermes>=0.1
+    kedi_http
+```
+
+- **Resolution.** Names resolve through the registry, the same way as `kedi add <name>`, for local and Git installs too. An entry cannot name a path, a URL, extras or a marker.
+- **Before anything changes.** `kedi install` and `kedi add` resolve the whole graph first:
+  - an installed package that satisfies every requirement on it is kept;
+  - any other comes from the registry, whose active version must satisfy every requirement on it, both this installation's and those of the installed packages that stay;
+  - a cycle, or a conflict that no version meets, is refused and names the requirements.
+- **One transaction.** Dependencies install first. If a step fails, the packages the installation added are removed and the ones it replaced come back. Python distributions they added stay installed, and the error names them.
+- **One version per Kedi home.** A package is installed once; there is no side-by-side versioning. The package the user asked for is recorded as `explicit`, a dependency as `dependency`, and an explicit install stays explicit when a dependent upgrades it.
+- **Using them.** A package's modules import their dependencies like any installed package (`> import: hermes`), and the dependencies' adapters come with them.
+
 A removed package leaves nothing behind. Its install receipt records what the installation created, and how and when each thing goes:
 - **Inside the package directory.** These go with the package: its source tree, and `.kedi-runtime/`, where its adapters keep run-time files.
 - **Python distributions.** The receipt lists the distributions the install added to Kedi's interpreter. A reinstall keeps them on the record.
 - **Upgrades.** A distribution the install only upgraded is recorded as changed and never reverted.
 
 `kedi remove <package-name>` deletes the package and an interrupted installation's leftovers.
+- **Needed packages stay.** A package that another installed package lists in `kedi_dependencies` is not removed; the error names its dependents.
+- **Orphans go with it.** The dependencies it was the last to need, and that were installed only as dependencies, are removed too.
 - **Python is left alone by default.** The Python distributions the package added stay: another program may use them.
 - **`--with-python-dependencies` removes them too.** Even then, Kedi keeps any distribution that another installed package needs, that another installed distribution requires, or whose version changed since, and says which and why.
 - **`--dry-run`** prints the plan without removing anything.
+
+`kedi audit` also reports an installed package whose Kedi dependency is missing or no longer satisfies it, and exits nonzero.
 
 `kedi python install <requirement>...` installs into Kedi's interpreter outside any package, so no `kedi remove` touches it; `kedi python install uv` installs uv there.
 
