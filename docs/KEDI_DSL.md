@@ -282,8 +282,10 @@ A module that imports the package then selects it like a built-in adapter:
   whose harness pins what Kedi cannot share. The package's `source` holds a uv project at its
   root (`pyproject.toml` and `uv.lock`).
   - **At install.** `kedi install` and `kedi add` run `uv sync --frozen --no-dev
-    --no-install-project` into the installed package's `.kedi-env/`. A Python that uv downloads
-    for the project goes there as well, and uv's cache is removed when the sync ends.
+    --no-install-project` into the installed package's `.kedi-env/`. The environment's Python is
+    one uv manages, downloaded there too, so upgrading a system Python cannot break it; set
+    `UV_PYTHON_PREFERENCE` to let uv use an installed one. uv's cache is removed when the sync
+    ends.
   - **When it fails.** If the sync fails, the new package is deleted and the previous version
     comes back.
   - **uv.** It must be installed: `kedi python install uv`.
