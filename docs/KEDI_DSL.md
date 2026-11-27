@@ -2358,9 +2358,14 @@ This language rename does not change the Python `system=` configuration API.
     `context_management` and the required compaction beta;
   - Codex App Server, through its persistent thread and
     `model_auto_compact_token_limit` configuration;
-  - Claude Agent SDK, through its native automatic session compaction.
+  - Claude Agent SDK, through its native automatic session compaction;
+  - a JSON-RPC bridge that declares `compaction`, such as the `pi` package's agent,
+    through its backend's own session compaction. It runs in the bridge's session
+    mode, so a program that also processes or replays history is refused. Each
+    summary request the bridge makes is admitted and counted like any other.
 
-  Codex accepts `compaction_threshold` as an explicit thread token limit.
+  Codex accepts `compaction_threshold` as an explicit thread token limit, and so does
+  a JSON-RPC bridge that declares `compaction: {threshold: true}`.
   Claude Agent SDK does not expose an exact compaction threshold: omit
   `compaction_threshold` to use its native policy. Supplying a threshold in a
   Claude scope fails before the model call. `compaction_mode: disabled` stops
