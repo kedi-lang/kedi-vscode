@@ -36,7 +36,7 @@ language for LLM programs: write, run, test and debug `.kedi` files.
 2. The first time the extension starts in a trusted window, it prepares a
    Python environment for its language server and debugger under
    `~/.kedi/editor-venv`. It downloads uv and Python 3.12, then installs
-   `kedi==0.1.7`, `tree-sitter-kedi==0.4.11` and `kedi-debugger==0.1.2`. No
+   `kedi==0.1.8`, `tree-sitter-kedi==0.4.11` and `kedi-debugger==0.1.2`. No
    existing Python installation is needed. This needs internet access once;
    later starts reuse the environment.
 3. Set the API key of your model provider, for example in a `.env` file, and
