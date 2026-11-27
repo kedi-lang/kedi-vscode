@@ -1,141 +1,76 @@
-# The Kedi Programming Language Support
+# Kedi for Visual Studio Code
 
-Kedi is a lightweight DSL for orchestrating LLM workflows. This extension ships syntax awareness and authoring helpers for the language.
+Language support for [Kedi](https://kedi-lang.org), a typed orchestration
+language for LLM programs: write, run, test and debug `.kedi` files.
 
-## Syntax Highlighting
-Basic coloring is available immediately through a bundled TextMate grammar,
-including `> output:` in profiles and the task/budget directives. Tree-sitter
-semantic tokens from the language server refine names, types, and Python regions.
-If the server cannot start, basic coloring remains available; diagnostics,
-completion, and hover still require a working Kedi Python environment.
+```kedi
+@get_language(country: str) -> str:
+  >> The primary language spoken in <country> is [language: str].
+  = <language>
 
-`> output:` belongs inside a `> profile: name:` body; it is not a top-level
-directive. Syntax coloring is not a substitute for parser diagnostics.
-
-- Procedures with typed parameters, optional return annotations, and colon terminators.
-- Custom type declarations with nested field highlighting.
-- Assignments, return lines, template text, and indentation-delimited blocks.
-- Substitutions, nested calls, output placeholders, and `>>` template blocks with continuation rows.
-- Inline Python expressions inside templates and arguments, plus escaped delimiter tokens.
-- Multiline Python fences with dedicated scopes for embedded return/assignment blocks.
-- String literals, unquoted template segments, and inline/block comments.
-- Test definitions `@test: procedure` where `procedure` is highlighted like a function name, with case blocks `> case: name` where `>` is highlighted like `@`, `case` as a keyword, and `name` as a variable.
-- Evaluation definitions `@eval: procedure` where `procedure` is highlighted like a function name, with metric blocks `> metric: name` where `>` is highlighted like `@`, `metric` as a keyword, and `name` as a variable.
-
-### Editor Integration Test
-
-`npm test` includes TextMate tokenization tests using VS Code's grammar engine.
-To exercise the actual extension host, point `kedi.lsp.pythonPath` in a trusted
-isolated test workspace at a Python environment with the current Kedi sources installed,
-then run from this extension directory:
-
-```sh
-npm run bundle
-code --new-window --user-data-dir /tmp/kedi-editor-test \
-  --extensions-dir /tmp/kedi-editor-test-extensions \
-  --extensionDevelopmentPath="$PWD" \
-  --extensionTestsPath="$PWD/tests/editor/index.cjs" /path/to/test-workspace
+[language: str] = <get_language(Turkey)>
+> show: <language>
 ```
 
-The test checks semantic tokens, profile output, captures, hover, outline,
-completion, language-server restart, debugger stepping, variables, clean exit,
-relaunch with changed source and `.env` values, the `@test:` code lens, a test run's
-exit status and Debug Kedi File, without making model calls.
-Set `debug.saveBeforeStart` to `none` in the test profile to avoid save prompts
-for the untitled language-server fixtures. To verify a
-packaged VSIX, use its installed directory as `extensionDevelopmentPath`.
+## Features
 
-## Authoring Semantics
-- Distinguishes plain template lines from control lines so prompts, returns, and assignments render correctly.
-- Recognizes typed outputs and variables so downstream code receives proper types (e.g., `list[str]`, `int`).
-- Captures call argument grammar, including single-backtick native arguments and escaped commas.
-- Supports nested procedure definitions, indentation-aware scopes, and block comment exclusion.
+- **Highlighting.** A bundled TextMate grammar colors Kedi as soon as a file
+  opens. Tree-sitter semantic tokens from the language server then refine
+  names, types and Python regions.
+- **Language server.** Diagnostics, completion, hover, go to definition,
+  references, rename, outline, signature help, inlay hints and formatting.
+- **Embedded Python.** Completion, hover, go to definition and references from
+  Pylance inside fenced Python blocks and inline backtick expressions.
+  Auto-imports go into the module's Python prelude.
+- **Kedi in Python.** Diagnostics, hover, navigation and highlighting inside
+  Python function docstrings whose first line is `kedi`.
+- **Run, test and evaluate.** Run the current file, its `@test:` blocks or its
+  `@eval:` blocks from the editor title, a code lens or the Command Palette.
+- **Debugging.** Breakpoints, stepping, call stack and variables for Kedi
+  programs, through the Kedi debugger.
+- **Snippets** for procedures, return lines and list types.
 
-## Snippets
-- Procedure scaffold with parameters, body placeholder, and return slot.
-- Return statement shortcut.
-- List type annotation stub.
+## Getting Started
 
-Directive completions include a short description and preserve `>`. A colon
-does not trigger suggestions. Backticks are entered explicitly, without an
-automatically inserted partner or delimiter snippet.
+1. Install the extension and open a `.kedi` file in a trusted workspace.
+2. The first time the extension starts in a trusted window, it prepares a
+   Python environment for its language server and debugger under
+   `~/.kedi/editor-venv`. It downloads uv and Python 3.12, then installs
+   `kedi==0.1.6`, `tree-sitter-kedi==0.4.10` and `kedi-debugger==0.1.2`. No
+   existing Python installation is needed. This needs internet access once;
+   later starts reuse the environment.
+3. Set the API key of your model provider, for example in a `.env` file, and
+   run the file with **Run Kedi File**.
 
-## Configuration
+The managed environment is shared with the Kedi Zed extension. An absolute
+`KEDI_HOME` relocates it. It serves the editor only: it is not your project's
+environment and is not added to your `PATH`. Microsoft's Python extension is not
+required, except for the embedded Python features.
 
-On first activation in a trusted window, the extension prepares
-`~/.kedi/editor-venv`, shared with the Kedi Zed extension. No existing Python
-installation is required. A checksum-verified uv 0.11.21 downloads managed
-Python 3.12 and installs `kedi==0.1.6`, `tree-sitter-kedi==0.4.10`,
-`kedi-debugger==0.1.2`, and their
-dependencies, including the language server. An absolute `KEDI_HOME` overrides
-`~/.kedi`. Python downloads and package caches stay inside that directory.
+## Choosing a Python
 
-The parser pin follows the published Kedi wheel's dependencies, not the newest
-development grammar. Select a project interpreter to use unreleased Kedi features.
+The managed environment pins the published Kedi release. To use a development
+version of Kedi, or your project's dependencies, run **Kedi: Select Python
+Interpreter** and choose one of:
 
-The managed language server and debugger do not require Microsoft's Python
-extension. Install Python/Pylance for embedded Python language features or
-to opt into the Python extension's interpreter selection.
+- the managed environment (the default);
+- the interpreter selected in Microsoft's Python extension;
+- a Python executable you enter.
 
-Release prerequisite: these exact package versions must be available on PyPI.
-Until publication, use an explicitly selected local environment, or validate
-local wheels with `node runtime/smoke.cjs /absolute/test-home` followed by the
-Kedi, tree-sitter-kedi, and kedi-debugger wheel paths. This test does not publish
-packages or change the user's default editor environment.
-
-Both editors use the same installation lock. A healthy environment is reused
-without downloading packages; failed installations are retried on the next
-activation or **Kedi: Restart Language Server**. Missing environments are
-recreated. Unowned directories and symlinks are not overwritten. The managed
-environment is for editor services, not your project's dependencies or CLI PATH.
-
-Use **Kedi: Select Python Interpreter** to return to the managed environment,
-follow **Python: Select Interpreter**, or enter a host executable. The default
-does not automatically execute a workspace-local server. To use a host Python:
+Kedi must already be installed in a Python you select. The extension never
+installs packages into it. The same settings, in `settings.json`:
 
 ```json
 {
-  "kedi.lsp.usePythonExtension": false,
-  "kedi.lsp.pythonPath": "/path/to/python"
+  "kedi.lsp.pythonPath": "/path/to/python",
+  "kedi.lsp.usePythonExtension": false
 }
 ```
 
-Kedi must already be installed in a selected host environment; the extension
-never installs into or modifies it. Following the Microsoft Python extension
-is opt-in with `kedi.lsp.usePythonExtension: true`. Its environment-change
-callback restarts Kedi automatically, resolving environment folders to their
-actual Python executable. An explicit `pythonPath` takes priority.
-
-For an advanced server override, with no `pythonPath` and
-`usePythonExtension: false`, configure:
-
-```json
-{
-  "kedi.lsp.serverCommand": "kedi-lsp"
-}
-```
-
-Embedded Python completion, hover, go-to-definition, and references are enabled by default for fenced Python blocks and inline backtick Python regions:
-
-```json
-{
-  "kedi.embeddedPython.enable": true
-}
-```
-
-For Pylance compatibility, the extension writes generated Python shadow files under VS Code's extension storage directory, outside the current workspace. They are cache-like files and can be deleted; the extension regenerates them when needed.
-
-Completions preserve snippets and additional edits. Auto-imports are inserted in
-the module's Python prelude, creating one when necessary. Suggestions whose edits
-cannot be safely projected to Kedi are omitted. At most 128 resolved suggestions
-are offered at once; continue typing to narrow the list. Python/Pylance must be
-enabled, and the selected Kedi server must support `kedi/pythonCompletions`.
+An explicit `kedi.lsp.pythonPath` takes priority over the Python extension's
+selection. Changing either restarts the language server.
 
 ## Running
-
-The editor title's run menu has **Run Kedi File** and **Debug Kedi File** for a saved
-`.kedi` file. Each `@test:` and `@eval:` block shows a **Run tests** or **Run evals** code
-lens. The same commands are in the Command Palette:
 
 | Command | Runs |
 | --- | --- |
@@ -144,14 +79,14 @@ lens. The same commands are in the Command Palette:
 | **Kedi: Run Evals in File** | `kedi <file> --eval` |
 | **Kedi: Debug Kedi File** | the Kedi debugger, without stopping on entry |
 
-`--test` and `--eval` run every block in the file. Runs use the language server's Python,
-start in the workspace folder, save the file first and require a trusted workspace. A new run
-replaces the previous run's terminal.
+Runs use the language server's Python and start in the workspace folder. They
+save the file first and need a trusted workspace. A new run replaces the
+previous run's terminal. `--test` and `--eval` run every block in the file.
 
 ## Debugging
 
-The native Run and Debug UI registers DAP type `kedi`. Trust the workspace,
-open a saved `.kedi` file, and press F5, or add this `.vscode/launch.json`:
+Open a saved `.kedi` file in a trusted workspace and press F5, or add a
+`.vscode/launch.json`:
 
 ```json
 {
@@ -171,88 +106,52 @@ open a saved `.kedi` file, and press F5, or add this `.vscode/launch.json`:
 }
 ```
 
-Debugging uses the same **Kedi: Select Python Interpreter** selection as the
-language server, including the shared `~/.kedi/editor-venv` default. That Python
-runs `-m kedi_debugger --stdio` and owns the debuggee's project dependencies.
-There is no second debug environment and no fallback interpreter. An opaque
-`kedi.lsp.serverCommand` needs an explicit Python selection for debugging.
+- `program` is an absolute path to a saved `.kedi` file. Unsaved edits are
+  saved before launch.
+- `cwd` defaults to the workspace folder, or the program's directory.
+- `env` maps names to strings; `null` removes an inherited variable.
+- `adapter` and `model` optionally override the program's defaults.
+- `stopOnEntry` defaults to `true`.
 
-Managed mode installs `kedi-debugger` automatically alongside Kedi. Existing
-managed environments are upgraded under the shared installation lock; subsequent
-starts verify and reuse the complete installation without reinstalling it.
+Line breakpoints, the call stack, variables, step into/over/out, continue,
+pause and stop are supported. Exception breakpoints can stop on raised Kedi
+exceptions, when a model input is ready and when a model result is ready.
+Attach, editing variables, arbitrary evaluation, conditional and function
+breakpoints are not supported. Pause is cooperative: model and tool calls
+already in flight finish first.
 
-For an explicitly selected host Python, install the debugger yourself. Until
-the matching releases are published, use the local source packages:
+The debugger runs in the same Python as the language server. The managed
+environment includes it. For a Python you selected, install it yourself:
+`pip install kedi-debugger`. Keep credentials out of committed launch files.
 
-```sh
-uv pip install --python /absolute/path/to/selected/python -e /path/to/kedi -e /path/to/kedi/debugger
-```
+## Settings
 
-For managed mode, use `~/.kedi/editor-venv/bin/python` (Windows:
-`~/.kedi/editor-venv/Scripts/python.exe`), adjusted for `KEDI_HOME`. Install a
-compatible local Kedi checkout and any project/provider dependencies there too,
-or select your existing project environment. Preflight imports `kedi_debugger`
-and the required `DebugEvent` / `observe_execution` symbols from `kedi.debugging`;
-an importable module without those hooks is not sufficient. The extension never installs
-packages into a host interpreter. A missing/incompatible package error names the selected interpreter
-and gives the local editable-install command.
-Host-Python language support remains usable without the debugger package.
+| Setting | Default | |
+| --- | --- | --- |
+| `kedi.lsp.pythonPath` | `""` | Python executable to run Kedi with, instead of the managed environment. |
+| `kedi.lsp.usePythonExtension` | `false` | Follow the Microsoft Python extension's selected interpreter. |
+| `kedi.lsp.serverCommand` | `""` | Advanced: a custom language-server command, used when no Python is selected. |
+| `kedi.lsp.trace.server` | `off` | Trace the language-server traffic in the **Kedi Language Server** output. |
+| `kedi.embeddedPython.enable` | `true` | Python features inside Kedi Python regions. Needs Pylance. |
+| `kedi.embeddedKediInPython.enable` | `true` | Kedi features inside `kedi` docstrings in Python files. |
+| `kedi.embeddedKediInPython.experimentalSemanticTokens` | `true` | Kedi highlighting inside those docstrings. |
+| `kedi.codemode.preloadWarningThreshold` | `5` | Warn when a CodeMode `preload_tools` list has more tools than this. |
 
-`program` must resolve to an absolute saved `.kedi` file. An unsaved edit to that
-file is saved before launch; a failed save, an edit that remains dirty, or a new
-edit during debugger preparation cancels launch. `cwd` defaults to the launch
-workspace folder, or the program directory when no folder is open.
-`args` is a string array and `env` maps names to strings or `null` for the
-debuggee. A `null` value removes an inherited environment variable; an empty
-string sets it to empty. Optional `adapter` and `model` select Kedi runtime defaults. Entry stop
-defaults to true; set `stopOnEntry: false` to run to a breakpoint.
-Environment names must be nonempty and contain neither `=` nor NUL; paths,
-arguments and environment values cannot contain NUL. Interpreter overrides
-(`python`, `pythonPath`, `interpreter`, `pythonExecutable`) in launch arguments
-are rejected. Configure Python through Kedi settings instead; malformed Python
-settings report an error without falling back to or installing another runtime.
+For embedded Python, the extension writes generated Python files to its own
+storage directory, outside your workspace. They are a cache; it regenerates
+them when needed.
 
-Use native line breakpoints, call stack, scopes/variables, step into/over/out,
-continue, pause, and stop. Inspection and supported controls are supplied by the
-backend's DAP capabilities; there is no custom inspector or expression engine.
-Native exception-breakpoint filters include raised Kedi exceptions, model input
-ready, and model result ready (`exceptions`, `model_input`, `model_result`).
-Attach, variable mutation, arbitrary evaluation, conditional/function
-breakpoints, reverse stepping, and Python-internal stepping are not supported.
-Pause is cooperative: in-flight model/tool work and external deadlines can
-continue. Save source changes and restart to debug the new version.
+## Troubleshooting
 
-Keep credentials out of committed launch files. The extension does not record
-DAP payloads or interpreter-probe output; prompt/results shown by the backend
-can still contain sensitive application data. Native UI may clear variables
-when a session terminates; this extension does not persist a post-run inspector.
+- **No diagnostics or completion.** Open the **Kedi Language Server** output.
+  A failed setup is retried on the next start, or with **Kedi: Restart
+  Language Server**.
+- **Wrong Kedi version.** Use **Kedi: Select Python Interpreter** to point the
+  extension at the Python where your Kedi is installed.
 
-The registration uses the official [VS Code debugger extension API](https://code.visualstudio.com/api/extension-guides/debugger-extension).
-In a parent Kedi source checkout, `debugger/README.md` describes backend controls
-and inspection boundaries; `debugger/src/kedi_debugger/server.py` is the
-authoritative launch validation and environment-merge contract.
+## Links
 
-## Runtime Development and Release
-
-`runtime/bootstrap.js` is the canonical shared installer. Run `npm run bundle`
-and, from the parent Kedi checkout, `node scripts/sync_editor_runtime.mjs` to
-update Zed's identical bundled copy. `npm test` checks installation recovery,
-cross-process locking, and interpreter selection. `runtime/smoke.cjs` verifies
-real installation, offline reuse, an LSP handshake, and a complete no-model
-debugger session in an explicit test home. Supply the local Kedi, parser, and
-debugger wheels as its optional package arguments when validating before release.
-
-Debugger checks: `npm run compile`, `npm test`, and `npm run bundle`. The tests
-cover launch validation, trust, save failures, interpreter changes, missing
-packages, and the stdio descriptor without executing a model. For an editor
-smoke test, launch `examples/debug.kedi` in an Extension Development Host, set a
-breakpoint on `> show:`, inspect `message` and the procedure stack, step, continue,
-and stop. This deterministic fixture needs no provider credentials.
-
-**Release prerequisite:** verify `kedi==0.1.6`, `tree-sitter-kedi==0.4.10`, and
-`kedi-debugger==0.1.2` are available from PyPI and that the Kedi wheel contains
-the required debugger hooks before publishing the extension. Version metadata
-alone is not sufficient. If that Kedi version was published without the hooks,
-publish a new version and update the runtime pin first. The installer intentionally fails
-clearly instead of silently using an incompatible older release. Local smoke
-tests can pass current wheels as arguments.
+- [Documentation](https://docs.kedi-lang.org/tooling/vscode/)
+- [Kedi on GitHub](https://github.com/kedi-lang/kedi)
+- [Report an issue](https://github.com/kedi-lang/kedi-vscode/issues)
+- [Contributing](CONTRIBUTING.md)

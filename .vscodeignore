@@ -24,3 +24,6 @@ runtime/smoke.cjs
 tests/**
 package-lock.json
 yarn.lock
+CONTRIBUTING.md
+docs/**
+examples/**

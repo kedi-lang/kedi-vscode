@@ -97,6 +97,12 @@ test("language server restarts reuse a single file watcher (audit #215 V4)", asy
     assert.equal(h.liveWatchers().length, 0);
 });
 
+test("Kedi files default to this extension's formatter", () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8'));
+    const defaults = manifest.contributes.configurationDefaults['[kedi]'];
+    assert.equal(defaults['editor.defaultFormatter'], `${manifest.publisher}.${manifest.name}`);
+});
+
 test("managed services do not require the Microsoft Python extension", async () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8'));
     assert.ok(!manifest.extensionDependencies?.includes('ms-python.python'));

@@ -2,6 +2,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const vscode = require('vscode');
+const manifest = require('../../package.json');
 
 async function runChecks() {
     const source = [
@@ -18,7 +19,7 @@ async function runChecks() {
     ].join('\n');
     const doc = await vscode.workspace.openTextDocument({ language: 'kedi', content: source });
     await vscode.window.showTextDocument(doc);
-    const extension = vscode.extensions.getExtension('dyigitpolat.kedi-vscode');
+    const extension = vscode.extensions.getExtension(`${manifest.publisher}.${manifest.name}`);
     assert.ok(extension, 'Kedi extension must be installed');
     await extension.activate();
     let legend, tokens;

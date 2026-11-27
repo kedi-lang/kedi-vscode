@@ -17,8 +17,13 @@ All notable changes to the Kedi VS Code extension are documented here.
 
 ### Changed
 
-- The managed runtime installs `kedi==0.1.4`, `tree-sitter-kedi==0.4.6` and
-  `kedi-debugger==0.1.0`, and reinstalls when these pins change.
+- Published by the `kedi-lang` publisher as `kedi-lang.kedi`, named "Kedi".
+  It replaces `dyigitpolat.kedi-vscode`; uninstall that one after installing
+  this.
+- The managed runtime installs `kedi==0.1.6`, `tree-sitter-kedi==0.4.10` and
+  `kedi-debugger==0.1.2`, and reinstalls when these pins change.
+- The README is written for the Marketplace; development notes moved to
+  `CONTRIBUTING.md`.
 - Harden the managed editor runtime and align it with directive value
   contracts.
 - Bundle the current Kedi language specification, including typed raw invoke

@@ -1,23 +1,31 @@
 {
-  "name": "kedi-vscode",
-  "displayName": "Kedi-Lang",
-  "description": "LSP-powered language support for Kedi DSL: highlighting via semantic tokens (tree-sitter on the server), diagnostics, hover, go-to-definition, references, rename, outline, signature help, inlay hints, formatting, plus Python LSP feature forwarding inside fenced ```python``` blocks.",
+  "name": "kedi",
+  "displayName": "Kedi",
+  "description": "Kedi language support: highlighting, diagnostics, completion, navigation and formatting, plus running, testing and debugging .kedi programs.",
   "version": "3.3.0",
-  "publisher": "dyigitpolat",
+  "publisher": "kedi-lang",
+  "license": "MIT",
   "icon": "icon.png",
+  "homepage": "https://kedi-lang.org",
+  "bugs": {
+    "url": "https://github.com/kedi-lang/kedi-vscode/issues"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
     "Programming Languages",
-    "Debuggers"
+    "Debuggers",
+    "Formatters",
+    "Snippets"
   ],
   "keywords": [
     "kedi",
     "kedi-lang",
-    "dsl",
     "llm",
+    "agents",
     "prompting",
+    "dsl",
     "language-server"
   ],
   "repository": {
@@ -102,7 +110,7 @@
     ],
     "configurationDefaults": {
       "[kedi]": {
-        "editor.defaultFormatter": "dyigitpolat.kedi-vscode",
+        "editor.defaultFormatter": "kedi-lang.kedi",
         "editor.semanticHighlighting.enabled": true
       }
     },
