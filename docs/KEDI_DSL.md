@@ -278,6 +278,30 @@ A module that imports the package then selects it like a built-in adapter:
   reported before launch. The bridge gets `KEDI_PACKAGE_RUNTIME_DIR`, the package's
   `.kedi-runtime/` directory, for its run-time files, and `KEDI_BRIDGE_CACHE` below it for the
   bridge SDKs' preflight cache, so `kedi remove` takes them with the package.
+- `environment: uv` runs a `command:` in a Python environment of the package's own, for a bridge
+  whose harness pins what Kedi cannot share. The package's `source` holds a uv project at its
+  root (`pyproject.toml` and `uv.lock`).
+  - **At install.** `kedi install` and `kedi add` run `uv sync --frozen --no-dev
+    --no-install-project` into the installed package's `.kedi-env/`. A Python that uv downloads
+    for the project goes there as well, and uv's cache is removed when the sync ends.
+  - **When it fails.** If the sync fails, the new package is deleted and the previous version
+    comes back.
+  - **uv.** It must be installed: `kedi python install uv`.
+  - **Running.** The command's program runs from the environment when the environment has it,
+    so `python bridge.py` uses the environment's interpreter. Nothing is installed into the
+    interpreter running Kedi.
+  - **Removal.** `kedi remove` takes the environment with the package.
+
+  ```kedi
+  > package: hermes:
+    version: 0.1.0
+    source: src/hermes
+    adapters:
+      hermes:
+        kind: agent
+        command: python bridge.py
+        environment: uv
+  ```
 - `class:` names a Python adapter class as `module:Class`, built with `Class(model=...)`. Its
   module comes from the interpreter running Kedi, usually through `python_dependencies`; it is
   imported only when a program selects the adapter, never when the package is installed or
