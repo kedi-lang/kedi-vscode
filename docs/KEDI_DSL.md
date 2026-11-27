@@ -240,7 +240,7 @@ The `python` field accepts only a fixed version (`python@3.11`) or an inclusive 
   - a cycle, or a conflict that no version meets, is refused and names the requirements.
 - **One transaction.** Dependencies install first. If a step fails, the packages the installation added are removed and the ones it replaced come back. Python distributions they added stay installed, and the error names them.
 - **One version per Kedi home.** A package is installed once; there is no side-by-side versioning. The package the user asked for is recorded as `explicit`, a dependency as `dependency`, and an explicit install stays explicit when a dependent upgrades it.
-- **Using them.** A package's modules import their dependencies like any installed package (`> import: hermes`), and the dependencies' adapters come with them.
+- **Using them.** The package's own modules import a dependency like any installed package (`> import: hermes`). That import makes the dependency's adapters selectable in the importing module (`> agent: hermes`); modules that import the package do not gain them.
 
 A removed package leaves nothing behind. Its install receipt records what the installation created, and how and when each thing goes:
 - **Inside the package directory.** These go with the package: its source tree, and `.kedi-runtime/`, where its adapters keep run-time files.
