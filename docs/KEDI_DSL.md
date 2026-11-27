@@ -2706,7 +2706,11 @@ This language rename does not change the Python `system=` configuration API.
   CodeMode is disabled by default. It supports Pydantic AI, LangChain, Claude
   Agent SDK, and Codex App Server. All four paths use
   the same control names, Monty subset, limits, approval composition, and
-  artifact boundary. CodeMode requires inline Kedi approval resolution because
+  artifact boundary. On a JSON-RPC bridge whose backend has a code mode of its
+  own (its handshake declares `codemode {language}`), `> codemode: enabled`
+  turns that one on instead: the run carries `codemode: true`, Kedi's tools
+  reach the model only through the backend's code, and each call takes Kedi's
+  hooks, approval and budgets. CodeMode settings are refused there. CodeMode requires inline Kedi approval resolution because
   a deferred approval cannot safely suspend and replay a partially executed
   snippet.
 
