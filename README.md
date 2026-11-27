@@ -65,8 +65,8 @@ automatically inserted partner or delimiter snippet.
 On first activation in a trusted window, the extension prepares
 `~/.kedi/editor-venv`, shared with the Kedi Zed extension. No existing Python
 installation is required. A checksum-verified uv 0.11.21 downloads managed
-Python 3.12 and installs `kedi==0.1.5`, `tree-sitter-kedi==0.4.7`,
-`kedi-debugger==0.1.1`, and their
+Python 3.12 and installs `kedi==0.1.6`, `tree-sitter-kedi==0.4.10`,
+`kedi-debugger==0.1.2`, and their
 dependencies, including the language server. An absolute `KEDI_HOME` overrides
 `~/.kedi`. Python downloads and package caches stay inside that directory.
 
@@ -249,8 +249,8 @@ smoke test, launch `examples/debug.kedi` in an Extension Development Host, set a
 breakpoint on `> show:`, inspect `message` and the procedure stack, step, continue,
 and stop. This deterministic fixture needs no provider credentials.
 
-**Release prerequisite:** verify `kedi==0.1.5`, `tree-sitter-kedi==0.4.7`, and
-`kedi-debugger==0.1.1` are available from PyPI and that the Kedi wheel contains
+**Release prerequisite:** verify `kedi==0.1.6`, `tree-sitter-kedi==0.4.10`, and
+`kedi-debugger==0.1.2` are available from PyPI and that the Kedi wheel contains
 the required debugger hooks before publishing the extension. Version metadata
 alone is not sufficient. If that Kedi version was published without the hooks,
 publish a new version and update the runtime pin first. The installer intentionally fails

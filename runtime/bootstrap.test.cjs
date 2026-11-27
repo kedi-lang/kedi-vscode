@@ -82,7 +82,7 @@ test("first setup pins packages, imports before receipt, then reuses offline", a
     const deps = fakeRuntime(calls);
     const first = await ensureRuntime({ home: dir }, deps);
     assert.deepEqual(calls[1].args.slice(-PACKAGES.length), PACKAGES);
-    assert.ok(PACKAGES.includes("kedi-debugger==0.1.1"));
+    assert.ok(PACKAGES.includes("kedi-debugger==0.1.2"));
     assert.ok(PROBE.includes("import kedi_debugger"));
     assert.ok(PROBE.includes("from kedi.debugging import DebugEvent, observe_execution"));
     assert.ok(calls[0].args.includes("--managed-python"));
@@ -137,7 +137,7 @@ test("a removed debugger is repaired even when the package receipt is current", 
     };
     await ensureRuntime({ home: dir }, deps);
     assert.equal(calls.length, 4);
-    assert.ok(calls[2].args.includes("kedi-debugger==0.1.1"));
+    assert.ok(calls[2].args.includes("kedi-debugger==0.1.2"));
     assert.equal(calls[3].args[2], PROBE);
     assert.deepEqual(JSON.parse(await fs.readFile(paths.receipt, "utf8")).packages, PACKAGES);
 });
