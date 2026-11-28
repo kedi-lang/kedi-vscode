@@ -229,7 +229,7 @@ The `python` field accepts only a fixed version (`python@3.11`) or an inclusive 
   version: 1.0.0
   source: src/release_tools
   kedi_dependencies:
-    hermes>=0.1
+    pi>=0.1
     kedi_http
 ```
 
@@ -240,7 +240,7 @@ The `python` field accepts only a fixed version (`python@3.11`) or an inclusive 
   - a cycle, or a conflict that no version meets, is refused and names the requirements.
 - **One transaction.** Dependencies install first. If a step fails, the packages the installation added are removed and the ones it replaced come back. Python distributions they added stay installed, and the error names them.
 - **One version per Kedi home.** A package is installed once; there is no side-by-side versioning. The package the user asked for is recorded as `explicit`, a dependency as `dependency`, and an explicit install stays explicit when a dependent upgrades it.
-- **Using them.** The package's own modules import a dependency like any installed package (`> import: hermes`). That import makes the dependency's adapters selectable in the importing module (`> agent: hermes`); modules that import the package do not gain them.
+- **Using them.** The package's own modules import a dependency like any installed package (`> import: pi`). That import makes the dependency's adapters selectable in the importing module (`> agent: pi`); modules that import the package do not gain them.
 
 A removed package leaves nothing behind. Its install receipt records what the installation created, and how and when each thing goes:
 - **Inside the package directory.** These go with the package: its source tree, and `.kedi-runtime/`, where its adapters keep run-time files.
@@ -332,7 +332,7 @@ A module that imports the package then selects it like a built-in adapter:
   ```
 - `environment_project:` names the uv project of an `environment: uv` instead, as a GitHub
   repository at an exact commit: `git+https://github.com/OWNER/REPOSITORY@<40-character commit>`.
-  It is for a harness that ships no wheel and supports only a source checkout (Hermes). A tag
+  It is for a harness that ships no wheel and supports only a source checkout. A tag
   or branch is refused, because either can move; the commit is the content's identity.
   - **At install.** Kedi fetches that one commit, without history or tags, into
     `.kedi-env/project/`, drops its `.git`, and runs `uv sync --frozen --no-dev` there. That
@@ -344,15 +344,15 @@ A module that imports the package then selects it like a built-in adapter:
     or none.
 
   ```kedi
-  > package: hermes:
+  > package: harness:
     version: 0.1.0
-    source: src/hermes
+    source: src/harness
     adapters:
-      hermes:
+      harness:
         kind: agent
         command: python bridge.py
         environment: uv
-        environment_project: git+https://github.com/NousResearch/hermes-agent@8fc0374447313e276f6b9a2764bfc750190c966a
+        environment_project: git+https://github.com/example/harness@0123456789abcdef0123456789abcdef01234567
   ```
 - `class:` names a Python adapter class as `module:Class`, built with `Class(model=...)`. Its
   module comes from the interpreter running Kedi, usually through `python_dependencies`; it is
@@ -2722,7 +2722,11 @@ This language rename does not change the Python `system=` configuration API.
   hides application tools, not the harness controls needed to operate them.
   `> codemode:` is lexical and may appear at top level, inside a profile, or
   inside a procedure. `> settings:` accepts only adapter/model settings and
-  does not accept `codemode`.
+  does not accept `codemode`. A name Kedi does not know is the selected adapter's
+  to take: a package adapter or JSON-RPC bridge that declares it takes it, and any
+  other adapter refuses it before the first model request. Where no package
+  adapter or bridge can be selected (no `> import:`, no `> agent: rpc:`), the
+  parser warns with `K-SETTING-KEY`.
 
   ACP always requires an explicit stdio command, either in a
   `> agent: acp:` body or through `ACPAdapter(command=...)`. Kedi does not resolve
